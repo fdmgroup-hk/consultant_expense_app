@@ -95,12 +95,13 @@ def main() -> int:
         check.fail("database", "SQLite! DATABASE_URL did not reach the app; "
                                "the knowledge base will be WIPED on the next deploy")
 
-    if status["storage_backend"] == "s3":
-        check.ok("file storage", "S3 - uploaded decks survive redeploys")
-    elif status["storage_backend"] == "none":
+    backend = status["storage_backend"]
+    if backend in ("supabase", "s3"):
+        check.ok("file storage", f"{backend} - uploaded decks survive redeploys")
+    elif backend == "none":
         check.warn("file storage", "originals are not retained (STORAGE_BACKEND=none)")
     else:
-        check.fail("file storage", "local disk! uploaded decks will be LOST on the next deploy")
+        check.fail("file storage", f"{backend}! uploaded decks will be LOST on the next deploy")
 
     if status["admin_token_is_default"]:
         check.fail("admin token", "still the default value - anyone can upload or delete")
