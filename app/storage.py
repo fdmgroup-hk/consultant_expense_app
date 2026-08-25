@@ -162,6 +162,71 @@ class S3Storage(Storage):
         return f"s3 bucket '{self.bucket}'"
 
 
+class SupabaseStorage(Storage):
+    """Supabase Storage over its REST API.
+
+    Preferred over the ``s3`` backend when hosting on Supabase: it authenticates
+    with the service-role key, which can be read straight from the project, so
+    there are no separate S3 access keys to create by hand.
+    """
+
+    name = "supabase"
+
+    def __init__(self) -> None:
+        settings = get_settings()
+        missing = [
+            field for field, value in {
+                "SUPABASE_URL": settings.supabase_url,
+                "SUPABASE_SERVICE_KEY": settings.supabase_service_key,
+            }.items() if not value
+        ]
+        if missing:
+            raise StorageError(f"STORAGE_BACKEND=supabase but these are unset: {', '.join(missing)}")
+
+        self.bucket = settings.supabase_bucket
+        self._base = f"{settings.supabase_url.rstrip('/')}/storage/v1/object"
+        self._key = settings.supabase_service_key
+
+    def _request(self, method: str, key: str, payload: bytes | None = None) -> bytes:
+        import urllib.error
+        import urllib.request
+
+        request = urllib.request.Request(
+            f"{self._base}/{self.bucket}/{key}", data=payload, method=method
+        )
+        request.add_header("Authorization", f"Bearer {self._key}")
+        request.add_header("apikey", self._key)
+        if payload is not None:
+            request.add_header("Content-Type", "application/octet-stream")
+            request.add_header("x-upsert", "true")
+        try:
+            with urllib.request.urlopen(request, timeout=120) as response:
+                return response.read()
+        except urllib.error.HTTPError as exc:
+            raise StorageError(
+                f"Supabase Storage {method} {self.bucket}/{key} failed: "
+                f"HTTP {exc.code} {exc.read()[:200].decode('utf-8', 'replace')}"
+            ) from exc
+        except Exception as exc:
+            raise StorageError(f"Supabase Storage unreachable: {exc}") from exc
+
+    def put(self, key: str, source: Path) -> str:
+        self._request("POST", key, source.read_bytes())
+        return key
+
+    def get(self, key: str) -> bytes:
+        return self._request("GET", key)
+
+    def delete(self, key: str) -> None:
+        try:
+            self._request("DELETE", key)
+        except StorageError:
+            logger.warning("Could not delete %s from %s", key, self.bucket, exc_info=True)
+
+    def describe(self) -> str:
+        return f"supabase bucket '{self.bucket}'"
+
+
 @lru_cache(maxsize=1)
 def get_storage() -> Storage:
     settings = get_settings()
@@ -169,6 +234,15 @@ def get_storage() -> Storage:
 
     if backend == "none":
         storage: Storage = NullStorage()
+    elif backend == "supabase":
+        try:
+            storage = SupabaseStorage()
+        except Exception as exc:
+            raise StorageError(
+                f"Supabase Storage is misconfigured: {exc}. Fix SUPABASE_URL and "
+                "SUPABASE_SERVICE_KEY, or set STORAGE_BACKEND=none to run without "
+                "retaining originals."
+            ) from exc
     elif backend == "s3":
         try:
             storage = S3Storage()

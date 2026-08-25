@@ -34,8 +34,11 @@ The app creates its own tables on first boot. There is no migration step to run.
 
 1. **Storage → New bucket.** Name it `consultant-originals`.
 2. Leave **Public bucket OFF.** This is the setting that matters most on this page — a public bucket would make every uploaded PowerPoint downloadable by anyone with the URL, bypassing the app entirely.
-3. Go to **Project Settings → Storage → S3 Connection**. Note the **endpoint URL**, which looks like `https://abcdefgh.supabase.co/storage/v1/s3`.
-4. Click **New access key**. Copy the access key ID and secret now — the secret is shown once.
+3. Go to **Project Settings → API** and copy two values: the **Project URL** (`https://<ref>.supabase.co`) and the **`service_role`** key.
+
+No S3 access keys are needed — `STORAGE_BACKEND=supabase` talks to Storage over its REST API using the service-role key. (The `s3` backend is still there if you ever move to Cloudflare R2 or MinIO.)
+
+**The `service_role` key bypasses row-level security.** It belongs only in Render's environment variables — never in the repo, a ticket, or a chat.
 
 ## Step 3 — Render: the app
 
@@ -48,9 +51,7 @@ The app creates its own tables on first boot. There is no migration step to run.
    | `ANTHROPIC_API_KEY` | your key from the Anthropic console |
    | `DATABASE_URL` | the pooler URI from step 1 |
    | `ADMIN_TOKEN` | generate one — see below |
-   | `S3_ENDPOINT_URL` | the endpoint from step 2 |
-   | `S3_ACCESS_KEY_ID` | from step 2 |
-   | `S3_SECRET_ACCESS_KEY` | from step 2 |
+   | `SUPABASE_SERVICE_KEY` | the `service_role` key from step 2 |
    | `APP_PASSWORD` | optional — see [Who can get in](#who-can-get-in) |
 
    Generate the admin token with:

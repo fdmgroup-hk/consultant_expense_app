@@ -36,7 +36,12 @@ class Settings(BaseSettings):
 
     # --- storage ---
     data_dir: Path = PROJECT_ROOT / "data"
-    storage_backend: str = "local"  # local | s3 | none
+    storage_backend: str = "local"  # local | supabase | s3 | none
+
+    # Supabase Storage (preferred when hosting on Supabase - no S3 keys needed)
+    supabase_url: str = ""
+    supabase_service_key: str = ""
+    supabase_bucket: str = "consultant-originals"
     s3_endpoint_url: str = ""
     s3_bucket: str = ""
     s3_access_key_id: str = ""

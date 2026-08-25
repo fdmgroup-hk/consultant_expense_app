@@ -21,11 +21,7 @@ services:
         sync: false
       - key: ADMIN_TOKEN          # python -c "import secrets;print(secrets.token_urlsafe(32))"
         sync: false
-      - key: S3_ACCESS_KEY_ID     # Supabase > Storage > S3 access keys
-        sync: false
-      - key: S3_SECRET_ACCESS_KEY
-        sync: false
-      - key: S3_ENDPOINT_URL      # https://<project-ref>.supabase.co/storage/v1/s3
+      - key: SUPABASE_SERVICE_KEY # Supabase > Project Settings > API > service_role
         sync: false
 
       # --- optional whole-site password. Leave unset for open read access. ---
@@ -34,11 +30,11 @@ services:
 
       # --- non-secret configuration ---
       - key: STORAGE_BACKEND
-        value: s3
-      - key: S3_BUCKET
+        value: supabase
+      - key: SUPABASE_URL
+        value: https://pxjiljyswcgcryapffir.supabase.co
+      - key: SUPABASE_BUCKET
         value: consultant-originals
-      - key: S3_REGION
-        value: ap-southeast-1
       - key: ANTHROPIC_MODEL
         value: claude-opus-5
       - key: ANTHROPIC_EFFORT

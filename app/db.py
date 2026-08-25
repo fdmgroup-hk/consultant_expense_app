@@ -311,7 +311,18 @@ def _get_pool():
             settings.database_url,
             min_size=1,
             max_size=settings.db_pool_size,
-            kwargs={"row_factory": dict_row, "autocommit": False},
+            kwargs={
+                "row_factory": dict_row,
+                "autocommit": False,
+                # Supabase's pooler (port 6543) is PgBouncer in transaction mode,
+                # which hands the same server connection to different clients
+                # between transactions. psycopg3's automatic prepared statements
+                # then collide across clients with
+                #   DuplicatePreparedStatement: prepared statement "_pg3_1" already exists
+                # Disabling them is the supported way to run behind a transaction
+                # pooler; it costs a little planning time per query and nothing else.
+                "prepare_threshold": None,
+            },
             open=True,
         )
     return _pool
