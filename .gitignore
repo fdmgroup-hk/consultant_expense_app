@@ -25,3 +25,9 @@ Thumbs.db
 
 # deployment secrets for copy-paste into Render - never commit
 RENDER_ENV.local.txt
+
+# Render API key - never commit
+render_key.txt
+
+# deployment env values (Supabase/Render) - never commit
+.env.render
