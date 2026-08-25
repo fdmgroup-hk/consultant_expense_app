@@ -168,7 +168,15 @@ async def _gemini_stream(
         elif getattr(exc, "code", None) == 429:
             yield {"type": "error", "message": "Gemini free-tier rate limit hit. Wait a minute and try again."}
         elif getattr(exc, "code", None) == 404:
-            yield {"type": "error", "message": f"Model '{settings.gemini_model}' not available on this key. Set GEMINI_MODEL to one you have access to."}
+            # Google retires models for new keys and the 404 body names the
+            # replacement, so pass that through rather than a generic message.
+            detail = ""
+            if "'message':" in message:
+                detail = message.split("'message':", 1)[1].split("', '", 1)[0].strip(" '\"")
+            yield {"type": "error", "message": (
+                f"Model '{settings.gemini_model}' is not available on this key. "
+                f"{detail} Set GEMINI_MODEL in .env."
+            )}
         else:
             logger.exception("Gemini client error")
             yield {"type": "error", "message": f"Gemini rejected the request: {message[:300]}"}

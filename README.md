@@ -189,7 +189,7 @@ Everything lives in `.env` (see `.env.example`).
 |---|---|---|
 | `LLM_PROVIDER` | `gemini` | `gemini` (free) or `anthropic` (paid) |
 | `GOOGLE_API_KEY` | — | Free key from Google AI Studio; required for chat and practice |
-| `GEMINI_MODEL` | `gemini-2.5-flash` | Covered by the free tier |
+| `GEMINI_MODEL` | `gemini-3.6-flash` | Covered by the free tier |
 | `ANTHROPIC_API_KEY` | — | Only when `LLM_PROVIDER=anthropic` |
 | `ANTHROPIC_MODEL` | `claude-opus-5` | `claude-sonnet-5` is cheaper and still strong here |
 | `ANTHROPIC_EFFORT` | `high` | `medium` or `low` cuts latency and cost noticeably |
