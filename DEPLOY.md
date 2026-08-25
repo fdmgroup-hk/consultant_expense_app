@@ -70,6 +70,14 @@ The app creates its own tables on first boot. There is no migration step to run.
 
 5. Open the URL Render gives you. The starter pack is already searchable; ask it something.
 
+6. **Verify it properly.** The browser cannot show you whether `DATABASE_URL` actually landed — an app running on SQLite looks perfectly healthy right up until the next deploy wipes it. Run:
+
+   ```bash
+   python -m scripts.verify_deployment https://your-app.onrender.com --admin-token <your token>
+   ```
+
+   It checks the database is Postgres, storage is S3, the admin token is not the default, the Claude key is set, retrieval returns hits and the UI is served. Anything reported as FAIL should be fixed before real material goes in.
+
 **If the logs say `Database: SQLite`,** `DATABASE_URL` did not reach the app. Everything will appear to work and then lose all data on the next deploy. Fix it before uploading anything.
 
 ## Step 4 — bring your local knowledge base up (optional)
