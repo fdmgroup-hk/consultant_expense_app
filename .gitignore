@@ -1,0 +1,24 @@
+# secrets
+.env
+*.key
+
+# data & uploads (consultant material must never be committed)
+data/
+!data/.gitkeep
+
+# python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# os / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

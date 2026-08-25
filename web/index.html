@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Consultant Experience</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>&#128188;</text></svg>" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark">CE</span>
+      <div>
+        <h1>Consultant Experience</h1>
+        <p class="tagline">Interview prep grounded in real placement material</p>
+      </div>
+    </div>
+    <nav class="tabs" role="tablist">
+      <button class="tab is-active" data-view="chat" role="tab">Ask</button>
+      <button class="tab" data-view="interview" role="tab">Practise</button>
+      <button class="tab" data-view="kb" role="tab">Knowledge base</button>
+    </nav>
+    <div class="status-chip" id="statusChip" title="Loading status…">…</div>
+  </header>
+
+  <main>
+    <!-- ============================ ASK ============================ -->
+    <section class="view is-active" id="view-chat">
+      <aside class="sidebar">
+        <button class="btn btn-primary block" id="newChatBtn">New conversation</button>
+
+        <div class="field">
+          <label for="chatRole">Focus on a role</label>
+          <select id="chatRole">
+            <option value="">All roles</option>
+            <option value="developer">Developer</option>
+            <option value="production_support">Production Support</option>
+            <option value="business_analyst">Business Analyst</option>
+            <option value="general">General</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label for="chatClient">Focus on a client</label>
+          <select id="chatClient"><option value="">All clients</option></select>
+        </div>
+
+        <label class="checkline">
+          <input type="checkbox" id="useKb" checked />
+          <span>Use the knowledge base</span>
+        </label>
+
+        <h3 class="sidebar-heading">Recent</h3>
+        <ul class="session-list" id="sessionList"></ul>
+      </aside>
+
+      <div class="panel chat-panel">
+        <div class="messages" id="messages">
+          <div class="empty-state" id="chatEmpty">
+            <h2>What do you want to understand?</h2>
+            <p>Answers are grounded in handover material from consultants who have completed these placements, and every claim is cited back to the deck it came from.</p>
+            <div class="suggestions">
+              <button class="chip">Walk me through the trade lifecycle</button>
+              <button class="chip">What does a production support analyst do all day?</button>
+              <button class="chip">Explain FIX order flow to someone new to finance</button>
+              <button class="chip">What is the difference between clearing and settlement?</button>
+            </div>
+          </div>
+        </div>
+
+        <form class="composer" id="chatForm">
+          <textarea id="chatInput" rows="1" placeholder="Ask about a concept, a role, or a previous consultant's experience…" autocomplete="off"></textarea>
+          <button type="submit" class="btn btn-primary" id="chatSend">Send</button>
+        </form>
+      </div>
+    </section>
+
+    <!-- ========================== PRACTISE ========================= -->
+    <section class="view" id="view-interview">
+      <aside class="sidebar">
+        <div class="field">
+          <label for="ivRole">Role</label>
+          <select id="ivRole">
+            <option value="developer">Developer</option>
+            <option value="production_support">Production Support</option>
+            <option value="business_analyst">Business Analyst</option>
+            <option value="general">General / not decided</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="ivLevel">Difficulty</label>
+          <select id="ivLevel">
+            <option value="foundation">Foundation</option>
+            <option value="intermediate" selected>Intermediate</option>
+            <option value="advanced">Advanced</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="ivTopic">Topic (optional)</label>
+          <input type="text" id="ivTopic" placeholder="e.g. settlement fails, SQL, incidents" />
+        </div>
+        <button class="btn btn-primary block" id="startInterviewBtn">Start interview</button>
+
+        <div class="scorecard" id="scorecard" hidden>
+          <h3 class="sidebar-heading">This session</h3>
+          <div class="score-big"><span id="scoreAvg">–</span><small>/10 average</small></div>
+          <p class="muted" id="scoreCount">0 answered</p>
+          <button class="btn btn-ghost block" id="endInterviewBtn">End &amp; review</button>
+        </div>
+      </aside>
+
+      <div class="panel">
+        <div class="interview-body" id="interviewBody">
+          <div class="empty-state">
+            <h2>Mock interview</h2>
+            <p>One question at a time, scored honestly, with a model answer and a follow-up that drills into whatever you left out. Questions are drawn from what the uploaded material shows the job actually involves.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ======================= KNOWLEDGE BASE ====================== -->
+    <section class="view" id="view-kb">
+      <aside class="sidebar">
+        <h3 class="sidebar-heading">Add material</h3>
+        <form id="uploadForm" class="upload-form">
+          <div class="field">
+            <label for="fileInput">File</label>
+            <input type="file" id="fileInput" accept=".pptx,.pdf,.docx,.md,.markdown,.txt" required />
+            <p class="hint">PPTX, PDF, DOCX, MD or TXT — up to 60 MB</p>
+          </div>
+          <div class="field">
+            <label for="upTitle">Title</label>
+            <input type="text" id="upTitle" placeholder="Defaults to the filename" />
+          </div>
+          <div class="field">
+            <label for="upRole">Role</label>
+            <select id="upRole">
+              <option value="general">General</option>
+              <option value="developer">Developer</option>
+              <option value="production_support">Production Support</option>
+              <option value="business_analyst">Business Analyst</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="upClient">Client</label>
+            <input type="text" id="upClient" placeholder="e.g. HSBC" />
+          </div>
+          <div class="field">
+            <label for="upConsultant">Consultant</label>
+            <input type="text" id="upConsultant" placeholder="Name or initials — optional" />
+          </div>
+          <div class="field">
+            <label for="upPeriod">Placement period</label>
+            <input type="text" id="upPeriod" placeholder="e.g. 2025 H1" />
+          </div>
+          <div class="field">
+            <label for="upTags">Tags</label>
+            <input type="text" id="upTags" placeholder="comma, separated" />
+          </div>
+          <label class="checkline">
+            <input type="checkbox" id="upReplace" />
+            <span>Replace if already indexed</span>
+          </label>
+          <div class="field">
+            <label for="adminToken">Admin token</label>
+            <input type="password" id="adminToken" placeholder="From ADMIN_TOKEN in .env" />
+          </div>
+          <button type="submit" class="btn btn-primary block" id="uploadBtn">Upload &amp; index</button>
+          <p class="upload-status" id="uploadStatus"></p>
+        </form>
+      </aside>
+
+      <div class="panel">
+        <div class="kb-toolbar">
+          <input type="search" id="kbSearch" placeholder="Search across every deck…" />
+          <button class="btn btn-ghost" id="reindexBtn" title="Re-embed every chunk with the current model">Re-index</button>
+        </div>
+        <div class="kb-body" id="kbBody"></div>
+      </div>
+    </section>
+  </main>
+
+  <div class="toast" id="toast" hidden></div>
+  <script type="module" src="/static/app.js"></script>
+</body>
+</html>

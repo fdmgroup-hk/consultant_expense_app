@@ -1,0 +1,14 @@
+# Normalise line endings. Shell scripts and the Dockerfile MUST be LF: a CRLF
+# run.sh fails inside a Linux container with "bad interpreter".
+* text=auto eol=lf
+
+*.sh        text eol=lf
+Dockerfile  text eol=lf
+*.ps1       text eol=crlf
+
+*.png binary
+*.jpg binary
+*.pdf binary
+*.pptx binary
+*.docx binary
+*.db binary

@@ -1,0 +1,24 @@
+# --- core ---
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+python-multipart==0.0.20
+pydantic==2.10.4
+pydantic-settings==2.7.1
+numpy==2.2.1
+
+# --- Claude ---
+anthropic>=1.0.0,<2
+
+# --- document extraction ---
+python-pptx==1.0.2
+pypdf==5.1.0
+python-docx==1.1.2
+
+# --- optional embedding providers (pick one; app works without either) ---
+# voyageai==0.3.2      # hosted, free tier, best quality  -> set VOYAGE_API_KEY
+# fastembed==0.5.1     # fully local ONNX, no API key, no torch
+
+# --- hosted deployment (Supabase Postgres + S3-compatible object storage) ---
+# Not needed for local SQLite development; installed in the Docker image.
+psycopg[binary,pool]==3.2.4
+boto3==1.36.3

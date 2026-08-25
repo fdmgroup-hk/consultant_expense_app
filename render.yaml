@@ -1,0 +1,49 @@
+# Render blueprint - https://render.com/docs/blueprint-spec
+#
+# In Render: New > Blueprint > connect this repo. It reads this file, builds the
+# Dockerfile and creates the service. Values marked `sync: false` are NOT stored
+# in the repo; Render prompts for them once, then keeps them encrypted.
+
+services:
+  - type: web
+    name: consultant-experience
+    runtime: docker
+    plan: free
+    region: singapore          # closest Render region to Hong Kong
+    healthCheckPath: /healthz
+    autoDeploy: true
+
+    envVars:
+      # --- secrets: entered in the Render dashboard, never committed ---
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: DATABASE_URL         # Supabase > Connection string > Transaction pooler
+        sync: false
+      - key: ADMIN_TOKEN          # python -c "import secrets;print(secrets.token_urlsafe(32))"
+        sync: false
+      - key: S3_ACCESS_KEY_ID     # Supabase > Storage > S3 access keys
+        sync: false
+      - key: S3_SECRET_ACCESS_KEY
+        sync: false
+      - key: S3_ENDPOINT_URL      # https://<project-ref>.supabase.co/storage/v1/s3
+        sync: false
+
+      # --- optional whole-site password. Leave unset for open read access. ---
+      - key: APP_PASSWORD
+        sync: false
+
+      # --- non-secret configuration ---
+      - key: STORAGE_BACKEND
+        value: s3
+      - key: S3_BUCKET
+        value: consultant-originals
+      - key: S3_REGION
+        value: ap-southeast-1
+      - key: ANTHROPIC_MODEL
+        value: claude-opus-5
+      - key: ANTHROPIC_EFFORT
+        value: high
+      - key: EMBEDDING_PROVIDER
+        value: auto
+      - key: PYTHONUNBUFFERED
+        value: "1"
