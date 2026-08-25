@@ -5,12 +5,18 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Consultant Experience</title>
   <link rel="stylesheet" href="/static/styles.css" />
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>&#128188;</text></svg>" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='16' fill='%23c7fe02'/><text x='50' y='68' font-family='Helvetica,Arial,sans-serif' font-size='42' font-weight='700' fill='%231b191d' text-anchor='middle'>FDM</text></svg>" />
 </head>
 <body>
   <header class="topbar">
     <div class="brand">
-      <span class="brand-mark">CE</span>
+      <a class="brand-mark" href="/" aria-label="FDM - Consultant Experience home">
+        <!-- Drop the FDM logo in at web/logo.png and it replaces the wordmark
+             below automatically. If the file is absent the img removes itself
+             and the styled fallback shows through. -->
+        <img src="/static/logo.png" alt="FDM" onerror="this.remove()" />
+        <span class="brand-mark-text">FDM</span>
+      </a>
       <div>
         <h1>Consultant Experience</h1>
         <p class="tagline">Interview prep grounded in real placement material</p>

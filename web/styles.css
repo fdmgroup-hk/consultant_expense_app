@@ -1,7 +1,17 @@
 /* Consultant Experience — UI styles.
-   Light palette on :root, dark redefined under prefers-color-scheme. */
+   Light palette on :root, dark redefined under prefers-color-scheme.
+
+   FDM brand: a bright lime green used as a BACKGROUND with near-black on top.
+   It is deliberately not used for text or links on white - lime on white is
+   close to unreadable. So: lime fills the logo tile, primary buttons and the
+   active tab, always with ink-coloured text; links use a darkened green that
+   actually passes contrast. */
 
 :root {
+  --fdm-green: #c7fe02;      /* sampled from web/logo.png */
+  --fdm-green-dim: #a8d602;
+  --fdm-ink: #1b191d;
+
   --bg: #f6f7f9;
   --surface: #ffffff;
   --surface-2: #f0f2f5;
@@ -10,9 +20,10 @@
   --text: #17202a;
   --text-muted: #5c6b7a;
   --text-faint: #8a97a4;
-  --accent: #0b5c8a;
-  --accent-soft: #e4f0f7;
-  --accent-text: #ffffff;
+  --accent: #4a7a00;          /* darkened lime - passes contrast as link text */
+  --accent-soft: #eef9d1;
+  --accent-text: var(--fdm-ink);
+  --accent-fill: var(--fdm-green);
   --good: #1a7f52;
   --warn: #a76500;
   --bad: #b3261e;
@@ -32,9 +43,10 @@
     --text: #e6ebf0;
     --text-muted: #9aa8b6;
     --text-faint: #71808f;
-    --accent: #4da3d4;
-    --accent-soft: #17313f;
-    --accent-text: #0b1116;
+    --accent: #c7fe02;
+    --accent-soft: #2b3a10;
+    --accent-text: #1b191d;
+    --accent-fill: var(--fdm-green);
     --good: #4cc38a;
     --warn: #e0a458;
     --bad: #f2726a;
@@ -75,13 +87,24 @@ body {
 .brand { display: flex; align-items: center; gap: 12px; }
 
 .brand-mark {
-  width: 36px; height: 36px;
-  border-radius: 9px;
-  background: var(--accent);
-  color: var(--accent-text);
+  position: relative;
+  width: 96px; height: 34px;   /* 2.82:1 - the wordmark's own aspect ratio */
+  border-radius: 6px;
+  background: var(--fdm-green);
   display: grid; place-items: center;
-  font-weight: 700; font-size: 14px; letter-spacing: .5px;
   flex-shrink: 0;
+  overflow: hidden;
+  text-decoration: none;
+}
+.brand-mark img {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  object-fit: contain;
+  background: var(--fdm-green);
+}
+.brand-mark-text {
+  color: var(--fdm-ink);
+  font-weight: 800; font-size: 15px; letter-spacing: -.3px;
 }
 
 .brand h1 { font-size: 15px; margin: 0; font-weight: 650; letter-spacing: -.1px; }
@@ -101,7 +124,7 @@ body {
   cursor: pointer;
 }
 .tab:hover { background: var(--surface-2); color: var(--text); }
-.tab.is-active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.tab.is-active { background: var(--accent-soft); color: var(--accent); font-weight: 650; }
 
 .status-chip {
   font-size: 12px;
@@ -199,7 +222,7 @@ input[type=file] { padding: 6px; font-size: 13px; }
 }
 .btn:disabled { opacity: .5; cursor: not-allowed; }
 .btn:not(:disabled):hover { filter: brightness(1.08); }
-.btn-primary { background: var(--accent); color: var(--accent-text); }
+.btn-primary { background: var(--accent-fill); color: var(--fdm-ink); font-weight: 650; }
 .btn-ghost { background: transparent; color: var(--text-muted); border-color: var(--border-strong); }
 .btn-ghost:hover { background: var(--surface-2); color: var(--text); }
 .block { display: block; width: 100%; }
@@ -258,7 +281,7 @@ input[type=file] { padding: 6px; font-size: 13px; }
 
 .cursor {
   display: inline-block; width: 7px; height: 15px;
-  background: var(--accent); vertical-align: text-bottom;
+  background: var(--fdm-green-dim); vertical-align: text-bottom;
   animation: blink 1s step-end infinite;
 }
 @keyframes blink { 50% { opacity: 0; } }
