@@ -109,9 +109,9 @@ def main() -> int:
         check.ok("admin token", "changed from the default")
 
     if status["llm_configured"]:
-        check.ok("Claude API key", f"set, model={status['model']}")
+        check.ok("LLM key", f"set, model={status['model']}")
     else:
-        check.fail("Claude API key", "not set - chat and interview practice will 503")
+        check.fail("LLM key", "not set - chat and interview practice will 503")
 
     if status["password_protected"]:
         check.ok("site password", "APP_PASSWORD is set")

@@ -6,8 +6,9 @@ pydantic==2.10.4
 pydantic-settings==2.7.1
 numpy==2.2.1
 
-# --- Claude ---
-anthropic>=1.0.0,<2
+# --- LLM providers ---
+google-genai>=2.0.0,<3        # default: Gemini free tier
+anthropic>=1.0.0,<2           # optional alternative, set LLM_PROVIDER=anthropic
 
 # --- document extraction ---
 python-pptx==1.0.2

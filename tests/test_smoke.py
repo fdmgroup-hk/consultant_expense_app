@@ -328,3 +328,60 @@ def test_sql_placeholders_translate_for_postgres():
     sql = "SELECT * FROM documents WHERE role = ? AND client = ?"
     assert sqlite_conn._sql(sql) == sql
     assert pg_conn._sql(sql) == "SELECT * FROM documents WHERE role = %s AND client = %s"
+
+
+# ------------------------------------------------------------ LLM provider
+
+def test_gemini_schema_strips_keys_gemini_rejects():
+    """Gemini's response_schema is an OpenAPI subset; additionalProperties 400s."""
+    from app.llm import _gemini_schema
+    from app.prompts import INTERVIEW_FEEDBACK_SCHEMA
+
+    cleaned = _gemini_schema(INTERVIEW_FEEDBACK_SCHEMA)
+
+    def assert_clean(node):
+        assert "additionalProperties" not in node
+        for child in node.get("properties", {}).values():
+            assert_clean(child)
+        if "items" in node:
+            assert_clean(node["items"])
+
+    assert_clean(cleaned)
+    # everything Gemini does support must survive
+    assert cleaned["required"] == INTERVIEW_FEEDBACK_SCHEMA["required"]
+    assert cleaned["properties"]["verdict"]["enum"] == ["needs_work", "on_track", "strong"]
+    assert cleaned["properties"]["gaps"]["items"]["type"] == "string"
+    assert "additionalProperties" in INTERVIEW_FEEDBACK_SCHEMA, "must not mutate the original"
+
+
+def test_gemini_contents_maps_assistant_to_model_role():
+    from app.llm import _gemini_contents
+
+    contents = _gemini_contents([
+        {"role": "user", "content": "what is novation?"},
+        {"role": "assistant", "content": "It replaces a counterparty."},
+        {"role": "user", "content": "and netting?"},
+    ])
+    assert [c.role for c in contents] == ["user", "model", "user"]
+    assert contents[1].parts[0].text == "It replaces a counterparty."
+
+
+def test_provider_selection_and_key_detection(monkeypatch):
+    from app import llm
+    from app.config import get_settings
+
+    settings = get_settings()
+    monkeypatch.setattr(settings, "llm_provider", "gemini")
+    monkeypatch.setattr(settings, "google_api_key", "")
+    assert llm.provider() == "gemini"
+    assert llm.is_configured() is False
+    assert "aistudio.google.com" in llm._missing_key_message()
+
+    monkeypatch.setattr(settings, "google_api_key", "test-key")
+    assert llm.is_configured() is True
+    assert llm.active_model() == settings.gemini_model
+
+    monkeypatch.setattr(settings, "llm_provider", "anthropic")
+    monkeypatch.setattr(settings, "anthropic_api_key", "")
+    assert llm.is_configured() is False
+    assert "console.anthropic.com" in llm._missing_key_message()

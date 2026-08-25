@@ -69,7 +69,7 @@ async def chat_stream(request: ChatRequest) -> StreamingResponse:
     if not llm.is_configured():
         raise HTTPException(
             status_code=503,
-            detail="ANTHROPIC_API_KEY is not set. Add it to .env and restart the app.",
+            detail=llm._missing_key_message() + " Then restart the app.",
         )
 
     session_id = _ensure_session(request.session_id, request.message, request.role)

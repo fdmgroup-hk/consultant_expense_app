@@ -57,10 +57,11 @@ async def lifespan(app: FastAPI):
         logger.info("Knowledge base is empty - loading the starter pack from seed/")
         load_seed_pack()
 
+    logger.info("LLM provider: %s (%s)", llm.provider(), llm.active_model())
     if not llm.is_configured():
         logger.warning(
-            "ANTHROPIC_API_KEY is not set. Browsing and search work; chat and "
-            "interview practice will return 503 until you add it."
+            "No API key for provider '%s'. Browsing and search work; chat and "
+            "interview practice will return 503 until you add one.", llm.provider()
         )
     if admin_token_is_default():
         logger.warning(
@@ -150,7 +151,7 @@ def status() -> StatusOut:
     storage = get_storage()
     return StatusOut(
         llm_configured=llm.is_configured(),
-        model=settings.anthropic_model,
+        model=llm.active_model(),
         documents=doc_count,
         chunks=stats["chunks"],
         embedded_chunks=stats["embedded_chunks"],

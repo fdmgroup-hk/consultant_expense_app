@@ -8,7 +8,7 @@ Singapore is the closest region either provider offers to Hong Kong — roughly 
 
 ## Before you start
 
-You need three accounts, all free: [Supabase](https://supabase.com), [Render](https://render.com), and an [Anthropic API key](https://console.anthropic.com/settings/keys). The Anthropic key is the only part that costs money, and only per question asked — see the cost table in [README.md](README.md).
+You need three accounts, all free: [Supabase](https://supabase.com), [Render](https://render.com), and a free [Google Gemini API key](https://aistudio.google.com/apikey) (no card required). On this setup every tier is free — see the cost section in [README.md](README.md).
 
 The code must be on GitHub for Render to build it.
 
@@ -48,7 +48,7 @@ No S3 access keys are needed — `STORAGE_BACKEND=supabase` talks to Storage ove
 
    | Variable | Value |
    |---|---|
-   | `ANTHROPIC_API_KEY` | your key from the Anthropic console |
+   | `GOOGLE_API_KEY` | free key from <https://aistudio.google.com/apikey> |
    | `DATABASE_URL` | the pooler URI from step 1 |
    | `ADMIN_TOKEN` | generate one — see below |
    | `SUPABASE_SERVICE_KEY` | the `service_role` key from step 2 |
@@ -174,6 +174,6 @@ The tripwires, in the order you are likely to hit them:
 
 **Uploads work, then files vanish after a deploy** — `STORAGE_BACKEND` is `local`. Set it to `s3`.
 
-**Chat returns 503** — `ANTHROPIC_API_KEY` is not set. Browsing and search work without it; chat and interview practice do not.
+**Chat returns 503** — `GOOGLE_API_KEY` is not set. Browsing and search work without it; chat and interview practice do not.
 
 **Everything is slow on the first request of the day** — Render free spun the instance down. Expected; see the table above.

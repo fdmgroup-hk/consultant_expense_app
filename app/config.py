@@ -16,7 +16,15 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # --- Claude ---
+    # --- LLM provider ---
+    llm_provider: str = "gemini"  # gemini | anthropic
+
+    # --- Google Gemini (default; free tier) ---
+    google_api_key: str = ""
+    gemini_model: str = "gemini-2.5-flash"
+    gemini_show_thinking: bool = True
+
+    # --- Claude (optional alternative) ---
     anthropic_api_key: str = ""
     anthropic_model: str = "claude-opus-5"
     anthropic_effort: str = "high"
