@@ -18,7 +18,7 @@ The app ships with a starter knowledge pack, so it is useful before anyone uploa
 ```powershell
 cd C:\Users\Asus\FDM_APP
 .\run.ps1 -Setup          # creates .venv, installs dependencies, creates .env
-# add your ANTHROPIC_API_KEY to .env, then:
+# add your free GOOGLE_API_KEY to .env, then:
 .\run.ps1
 ```
 
@@ -26,7 +26,7 @@ cd C:\Users\Asus\FDM_APP
 
 ```bash
 ./run.sh                  # first run sets everything up and creates .env
-# add your ANTHROPIC_API_KEY to .env, then:
+# add your free GOOGLE_API_KEY to .env, then:
 ./run.sh
 ```
 
