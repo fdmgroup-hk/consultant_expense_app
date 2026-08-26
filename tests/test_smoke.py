@@ -366,7 +366,9 @@ def test_gemini_schema_strips_keys_gemini_rejects():
     # everything Gemini does support must survive
     assert cleaned["required"] == INTERVIEW_FEEDBACK_SCHEMA["required"]
     assert cleaned["properties"]["verdict"]["enum"] == ["needs_work", "on_track", "strong"]
-    assert cleaned["properties"]["gaps"]["items"]["type"] == "string"
+    assert cleaned["properties"]["must_know"]["items"]["type"] == "string"
+    # The nested process_covered object must be cleaned too, not just the top level.
+    assert "additionalProperties" not in cleaned["properties"]["process_covered"]
     assert "additionalProperties" in INTERVIEW_FEEDBACK_SCHEMA, "must not mutate the original"
 
 
@@ -443,3 +445,93 @@ def test_provider_dispatch_covers_all_three(monkeypatch):
         monkeypatch.setattr(settings, key_field, "k")
         assert llm.is_configured() is True
         assert llm.active_model()
+
+
+def test_feedback_schema_separates_gaps_by_seniority():
+    """must_know drives the score; advanced_bonus must not. The buckets have to
+    exist and be required, or the model will collapse them back into one list."""
+    from app.prompts import INTERVIEW_FEEDBACK_SCHEMA as S, TROUBLESHOOTING_STEPS
+
+    for bucket in ("must_know", "good_to_know", "advanced_bonus"):
+        assert bucket in S["properties"], bucket
+        assert bucket in S["required"], bucket
+    assert "gaps" not in S["properties"], "flat gaps list should be gone"
+
+    steps = S["properties"]["process_covered"]
+    assert list(steps["properties"]) == [k for k, _ in TROUBLESHOOTING_STEPS]
+    assert steps["required"] == [k for k, _ in TROUBLESHOOTING_STEPS]
+
+    # Senior tooling must be named, so the model knows what NOT to penalise.
+    advanced = S["properties"]["advanced_bonus"]["description"].lower()
+    for tool in ("thread dump", "strace", "prometheus", "rolling deployment"):
+        assert tool in advanced, tool
+
+
+def test_interview_prompt_states_junior_seniority_and_bands():
+    from app.prompts import build_interview_system
+
+    system = build_interview_system("production_support", "advanced", "CLSA")
+    assert "JUNIOR" in system
+    # Difficulty and seniority are different axes - an advanced question is still
+    # answered by a junior.
+    assert "separate from the DIFFICULTY" in system
+    assert "identify impact" in system and "communicate" in system
+    for band in ("1-3", "4-5", "6-7", "9-10"):
+        assert band in system, band
+
+
+def test_interview_export_renders_commands_and_omits_empty_sections():
+    """The export is the thing a consultant keeps, so it must carry the commands -
+    and must not emit an empty 'Commands' heading for a domain question."""
+    import json as _json
+
+    from app.routers.interview import _session_markdown
+
+    session = {"role_focus": "production_support", "level": "foundation",
+               "topic": "Linux high CPU", "client_focus": "CLSA",
+               "created_at": "2026-08-26T08:43:00"}
+    linux_turn = {
+        "ordinal": 1, "question": "High CPU on the Calypso box. First command?",
+        "question_kind": "scenario", "answer": "I would run top.", "score": 6,
+        "feedback": _json.dumps({
+            "verdict": "on_track", "strengths": ["Chose top first"],
+            "must_know": ["Check impact"], "good_to_know": [], "advanced_bonus": [],
+            "process_covered": {"identify_impact": False, "investigate": True,
+                                "isolate_root_cause": True, "remediate_safely": False,
+                                "verify": False, "communicate": False},
+            "command_walkthrough": [{"checking": "Overall system load", "command": "uptime"},
+                                    {"checking": "Top CPU consumers", "command": "top"}],
+            "minimum_commands": ["uptime", "top", "tail -100 app.log"],
+            "model_answer": "Start broad, then narrow.",
+            "follow_up_question": "What next?",
+        }),
+    }
+    domain_turn = {
+        "ordinal": 2, "question": "What is novation?", "question_kind": "domain",
+        "answer": "A CCP steps in.", "score": 7,
+        "feedback": _json.dumps({
+            "verdict": "on_track", "strengths": ["Correct"], "must_know": [],
+            "good_to_know": [], "advanced_bonus": [],
+            "process_covered": {k: False for k in
+                                ("identify_impact", "investigate", "isolate_root_cause",
+                                 "remediate_safely", "verify", "communicate")},
+            "command_walkthrough": [], "minimum_commands": [],
+            "model_answer": "Novation replaces the counterparty.",
+            "follow_up_question": "And netting?",
+        }),
+    }
+
+    md = _session_markdown(session, [linux_turn, domain_turn])
+
+    assert "**Client:** CLSA" in md and "**Average score:** 6.5/10" in md
+    # the exact format requested: numbered step, label, then the command
+    assert "Step 1 — Overall system load" in md
+    assert "```bash\nuptime\n```" in md
+    assert "Minimum interview answer" in md and "tail -100 app.log" in md
+    # only the steps actually covered are reported as covered
+    assert "- Covered: Investigate, Isolate root cause" in md
+    assert "- Missed: Identify impact, Remediate safely, Verify, Communicate" in md
+    # a domain question must not carry command headings or an empty process block
+    assert md.count("Commands a strong junior would use") == 1
+    assert md.count("Troubleshooting order") == 1
+    assert "What is novation?" in md

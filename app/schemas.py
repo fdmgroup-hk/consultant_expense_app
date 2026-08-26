@@ -98,7 +98,15 @@ class InterviewFeedbackOut(BaseModel):
     score: int
     verdict: str
     strengths: list[str]
-    gaps: list[str]
+    # Gaps are bucketed by seniority so the score can be driven by must_know alone
+    # and senior-level extras stay informative rather than punitive.
+    must_know: list[str] = Field(default_factory=list)
+    good_to_know: list[str] = Field(default_factory=list)
+    advanced_bonus: list[str] = Field(default_factory=list)
+    process_covered: dict[str, bool] = Field(default_factory=dict)
+    # Populated only for command-line questions; empty for domain/competency ones.
+    command_walkthrough: list[dict[str, str]] = Field(default_factory=list)
+    minimum_commands: list[str] = Field(default_factory=list)
     model_answer: str
     follow_up_question: str
     citations: list[dict[str, Any]] = Field(default_factory=list)

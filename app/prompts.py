@@ -130,9 +130,45 @@ part. If it is strong, go one level deeper.
 and competency ("tell me about a time...").
 - Never answer your own question in the same turn.
 
-When you assess an answer, be honest and useful. A generous score helps nobody walking \
-into a real interview. Point at the specific thing that was missing, and say what a strong \
-answer would have contained.
+SENIORITY: you are interviewing for a JUNIOR role. The candidate is an FDM consultant \
+at the start of their career, not an experienced SRE or TechOps engineer. This is \
+separate from the DIFFICULTY setting above: difficulty controls how hard the question \
+is, seniority controls what a good answer looks like. Even an advanced question is \
+being answered by a junior.
+
+HOW TO SCORE
+- Score against realistic junior expectations. The benchmark is "would a competent \
+graduate a few weeks into a support placement say this", not "would a senior engineer".
+- 1-3 poor, major fundamentals missing. 4-5 basic - right direction, incomplete \
+troubleshooting. 6-7 a good junior answer that covers the main investigation steps. \
+8 very strong for a junior. 9-10 exceptional, approaching an experienced support engineer.
+- Do NOT deduct meaningfully for missing senior-level tooling - JVM thread dumps, JMX, \
+strace, core dumps, Prometheus, deep database lock analysis, rolling deployments - unless \
+the question explicitly asked about them. Put those under advanced_bonus, where they \
+broaden horizons without costing marks.
+- What you SHOULD weigh heavily is whether they troubleshoot in a logical order: \
+identify impact -> investigate -> isolate root cause -> remediate safely -> verify -> \
+communicate. A junior who follows that sequence with basic tools beats one who names \
+clever tools in no coherent order. Record which steps they hit in process_covered.
+- Safety and judgement count as fundamentals: not restarting blindly, not running \
+UPDATE on production without approval, telling the desk before they ask.
+
+COMMANDS
+If the question involves investigating something on a Linux box or a command line, fill \
+command_walkthrough with the ordered steps a strong junior would actually run - one \
+command per step, each labelled in plain words with what it checks. Work broad to narrow: \
+overall load, then the offending process, then that process in detail, then the service, \
+then its logs, then verification after any fix. Stick to what a junior support engineer \
+genuinely uses - uptime, top, ps, systemctl, journalctl, tail, grep, df, free. Leave out \
+strace, core dumps and JVM tooling unless the question demanded them. Then fill \
+minimum_commands with the five to eight most worth memorising for an interview.
+
+For any question that is not about a command line - a competency question, a domain \
+question about the trade lifecycle - both arrays must be empty.
+
+Be honest within that frame. A generous score helps nobody walking into a real \
+interview - but neither does marking a junior against a senior's checklist. Sort every \
+gap into must_know, good_to_know or advanced_bonus, and let must_know drive the number.
 """
 
 INTERVIEW_QUESTION_SCHEMA = {
@@ -166,33 +202,148 @@ INTERVIEW_QUESTION_SCHEMA = {
     "additionalProperties": False,
 }
 
+#: The six-step arc a support answer should follow. Surfaced as a checklist so a
+#: consultant can see *which* step they skipped, not just that they lost marks -
+#: missing "verify" is a different lesson from missing "communicate".
+TROUBLESHOOTING_STEPS = (
+    ("identify_impact", "Identify impact"),
+    ("investigate", "Investigate"),
+    ("isolate_root_cause", "Isolate root cause"),
+    ("remediate_safely", "Remediate safely"),
+    ("verify", "Verify"),
+    ("communicate", "Communicate"),
+)
+
 INTERVIEW_FEEDBACK_SCHEMA = {
     "type": "object",
     "properties": {
         "score": {
             "type": "integer",
-            "description": "0-10. 0-3 wrong or empty, 4-6 partially right, 7-8 solid, 9-10 exceptional.",
+            "description": (
+                "0-10 against JUNIOR expectations. 1-3 poor, major fundamentals "
+                "missing. 4-5 basic - right direction but incomplete troubleshooting. "
+                "6-7 good junior answer covering the main investigation steps. 8 very "
+                "strong junior answer. 9-10 exceptional, approaching an experienced "
+                "support engineer. 0 only for a blank or entirely irrelevant answer."
+            ),
         },
         "verdict": {
             "type": "string",
             "enum": ["needs_work", "on_track", "strong"],
+            "description": (
+                "Must agree with the score band: 0-3 needs_work, 4-5 needs_work, "
+                "6-7 on_track (a good junior answer), 8-10 strong. Never label a 6 or 7 "
+                "as needs_work - by these bands that is a pass."
+            ),
         },
-        "strengths": {"type": "array", "items": {"type": "string"}},
-        "gaps": {
+        "strengths": {
             "type": "array",
             "items": {"type": "string"},
-            "description": "Specific things missing or wrong. Empty only for a genuinely complete answer.",
+            "description": "What the candidate actually got right. Never leave empty for an honest attempt.",
+        },
+        "must_know": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": (
+                "ONLY things this answer actually MISSED or got wrong that a junior is "
+                "expected to know - basic checks, logical ordering, obvious first steps, "
+                "safe practice. This is a list of gaps, NOT a syllabus: never list "
+                "something the candidate already covered. It must be consistent with the "
+                "score - a 7 or 8 should have very few entries here, and an answer that "
+                "covered the fundamentals should have NONE. Put anything they did well "
+                "under strengths instead."
+            ),
+        },
+        "good_to_know": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": (
+                "Useful next-step knowledge that would strengthen the answer but is not "
+                "expected on day one. Deduct at most lightly for these."
+            ),
+        },
+        "advanced_bonus": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": (
+                "Senior/SRE-level extras: JVM thread dumps, JMX, strace, core dumps, "
+                "Prometheus, deep database lock analysis, rolling deployments and the "
+                "like. Listed as horizon-broadening only. These MUST NOT reduce the "
+                "score unless the question explicitly asked for them."
+            ),
+        },
+        "process_covered": {
+            "type": "object",
+            "description": (
+                "Which steps of identify impact -> investigate -> isolate root cause -> "
+                "remediate safely -> verify -> communicate the answer actually covered. "
+                "All false if this was not a troubleshooting question."
+            ),
+            "properties": {
+                "identify_impact": {"type": "boolean"},
+                "investigate": {"type": "boolean"},
+                "isolate_root_cause": {"type": "boolean"},
+                "remediate_safely": {"type": "boolean"},
+                "verify": {"type": "boolean"},
+                "communicate": {"type": "boolean"},
+            },
+            "required": [key for key, _ in TROUBLESHOOTING_STEPS],
+            "additionalProperties": False,
+        },
+        "command_walkthrough": {
+            "type": "array",
+            "description": (
+                "ONLY for questions that involve investigating something on a Linux box "
+                "or command line. The ordered steps a strong JUNIOR would realistically "
+                "run, each with the single command for it. Practical commands only - no "
+                "strace, no core dumps, no JVM tooling unless the question demanded it. "
+                "Typically 4-8 steps. EMPTY ARRAY for any non-command-line question."
+            ),
+            "items": {
+                "type": "object",
+                "properties": {
+                    "checking": {
+                        "type": "string",
+                        "description": "What this step checks, in plain words. e.g. 'Overall system load'",
+                    },
+                    "command": {
+                        "type": "string",
+                        "description": "The command itself, no prose, no $ prefix. May be two lines if genuinely paired.",
+                    },
+                },
+                "required": ["checking", "command"],
+                "additionalProperties": False,
+            },
+        },
+        "minimum_commands": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": (
+                "The 5-8 commands most worth memorising for this kind of question - the "
+                "'if you remember nothing else' set a candidate could recite in an "
+                "interview. Write each one COMPLETE and runnable, with the flags you would "
+                "actually type (e.g. 'ps -eo pid,ppid,%cpu,%mem,cmd --sort=-%cpu | head', "
+                "not bare 'ps'; 'tail -100 app.log', not bare 'tail'). No explanation, one "
+                "command per entry. EMPTY ARRAY for any non-command-line question."
+            ),
         },
         "model_answer": {
             "type": "string",
-            "description": "What a strong answer sounds like, in Markdown. Grounded in the excerpts where they apply.",
+            "description": (
+                "What a strong JUNIOR answer sounds like, in Markdown - not a senior "
+                "engineer's answer. Grounded in the excerpts where they apply."
+            ),
         },
         "follow_up_question": {
             "type": "string",
             "description": "The single next question, drilling into the weakest part of the answer.",
         },
     },
-    "required": ["score", "verdict", "strengths", "gaps", "model_answer", "follow_up_question"],
+    "required": [
+        "score", "verdict", "strengths", "must_know", "good_to_know",
+        "advanced_bonus", "process_covered", "command_walkthrough",
+        "minimum_commands", "model_answer", "follow_up_question",
+    ],
     "additionalProperties": False,
 }
 

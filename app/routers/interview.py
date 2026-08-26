@@ -6,13 +6,14 @@ import logging
 import uuid
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Response
 
 from .. import db, llm
 from ..prompts import (
     INTERVIEW_FEEDBACK_SCHEMA,
     INTERVIEW_QUESTION_SCHEMA,
     ROLE_LABELS,
+    TROUBLESHOOTING_STEPS,
     build_interview_system,
     format_context,
 )
@@ -206,7 +207,12 @@ async def answer_question(request: InterviewAnswerRequest) -> InterviewFeedbackO
         score=int(feedback["score"]),
         verdict=feedback["verdict"],
         strengths=feedback.get("strengths", []),
-        gaps=feedback.get("gaps", []),
+        must_know=feedback.get("must_know", []),
+        good_to_know=feedback.get("good_to_know", []),
+        advanced_bonus=feedback.get("advanced_bonus", []),
+        process_covered=feedback.get("process_covered", {}) or {},
+        command_walkthrough=feedback.get("command_walkthrough", []) or [],
+        minimum_commands=feedback.get("minimum_commands", []) or [],
         model_answer=feedback.get("model_answer", ""),
         follow_up_question=feedback.get("follow_up_question", ""),
         citations=citations,
@@ -296,6 +302,133 @@ def interview_summary(session_id: str) -> InterviewSummaryOut:
             }
             for t in turns
         ],
+    )
+
+
+def _feedback_markdown(turn: dict[str, Any]) -> list[str]:
+    """Render one answered turn's feedback. Sections are omitted when empty so a
+    domain question does not carry an empty Commands heading."""
+    lines: list[str] = []
+    stored = json.loads(turn["feedback"]) if turn.get("feedback") else {}
+    if not stored:
+        return lines
+
+    verdict = str(stored.get("verdict", "")).replace("_", " ")
+    lines.append(f"**Score: {turn['score']}/10 — {verdict}**")
+    lines.append("")
+
+    covered = stored.get("process_covered") or {}
+    if any(covered.values()):
+        hit = [label for key, label in TROUBLESHOOTING_STEPS if covered.get(key)]
+        missed = [label for key, label in TROUBLESHOOTING_STEPS if not covered.get(key)]
+        lines.append(f"*Troubleshooting order — {len(hit)} of {len(TROUBLESHOOTING_STEPS)}*")
+        lines.append(f"- Covered: {', '.join(hit)}")
+        if missed:
+            lines.append(f"- Missed: {', '.join(missed)}")
+        lines.append("")
+
+    for heading, key in (
+        ("What worked", "strengths"),
+        ("Must know for a junior", "must_know"),
+        ("Good to know", "good_to_know"),
+        ("Advanced / senior bonus (not expected yet)", "advanced_bonus"),
+    ):
+        items = stored.get(key) or []
+        if items:
+            lines.append(f"**{heading}**")
+            lines.extend(f"- {item}" for item in items)
+            lines.append("")
+
+    walkthrough = stored.get("command_walkthrough") or []
+    if walkthrough:
+        lines.append("**Commands a strong junior would use**")
+        lines.append("")
+        for index, step in enumerate(walkthrough, start=1):
+            lines.append(f"Step {index} — {step.get('checking', '').strip()}")
+            lines.append("")
+            lines.append("```bash")
+            lines.append(str(step.get("command", "")).strip())
+            lines.append("```")
+            lines.append("")
+
+    minimum = stored.get("minimum_commands") or []
+    if minimum:
+        lines.append("**Minimum interview answer — the commands to remember**")
+        lines.append("")
+        lines.append("```bash")
+        lines.extend(str(c).strip() for c in minimum)
+        lines.append("```")
+        lines.append("")
+
+    if stored.get("model_answer"):
+        lines.append("**A strong junior answer**")
+        lines.append("")
+        lines.append(stored["model_answer"])
+        lines.append("")
+    return lines
+
+
+def _session_markdown(session: dict[str, Any], turns: list[dict[str, Any]]) -> str:
+    scored = [t["score"] for t in turns if t["score"] is not None]
+    average = round(sum(scored) / len(scored), 1) if scored else None
+    role = ROLE_LABELS.get(session["role_focus"], session["role_focus"])
+
+    header = [f"# Mock interview — {role}", ""]
+    facts = [f"**Level:** {session['level']}"]
+    if session.get("client_focus"):
+        facts.append(f"**Client:** {session['client_focus']}")
+    if session.get("topic"):
+        facts.append(f"**Topic:** {session['topic']}")
+    facts.append(f"**Answered:** {len(scored)} of {len(turns)}")
+    if average is not None:
+        facts.append(f"**Average score:** {average}/10")
+    if session.get("created_at"):
+        facts.append(f"**Date:** {str(session['created_at'])[:16].replace('T', ' ')}")
+    header.append("  \n".join(facts))
+    header.append("")
+    header.append("Scored against junior expectations: senior-level tooling is listed as "
+                  "bonus material and does not reduce the score.")
+    header.append("")
+
+    body: list[str] = []
+    for turn in turns:
+        body.append("---")
+        body.append("")
+        body.append(f"## Question {turn['ordinal']} — {turn.get('question_kind', 'main')}")
+        body.append("")
+        body.append(turn["question"])
+        body.append("")
+        if turn.get("answer"):
+            body.append("**Your answer**")
+            body.append("")
+            body.append("> " + turn["answer"].replace("\n", "\n> "))
+            body.append("")
+            body.extend(_feedback_markdown(turn))
+        else:
+            body.append("*Not answered.*")
+            body.append("")
+    return "\n".join(header + body).strip() + "\n"
+
+
+@router.get("/sessions/{session_id}/export")
+def export_interview(session_id: str) -> Response:
+    """Download the whole session - questions, answers, scores, commands - as Markdown.
+
+    Markdown rather than PDF so it stays greppable, pastes into Confluence or a
+    notes app, and needs no extra dependency in the image.
+    """
+    session = _load_session(session_id)
+    turns = _load_turns(session_id)
+    if not turns:
+        raise HTTPException(status_code=404, detail="That interview has no questions yet.")
+
+    role = session["role_focus"]
+    stamp = str(session.get("created_at") or "")[:10] or "session"
+    filename = f"mock-interview-{role}-{stamp}.md"
+    return Response(
+        content=_session_markdown(session, turns),
+        media_type="text/markdown; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 
