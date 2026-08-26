@@ -38,7 +38,7 @@ services:
       - key: LLM_PROVIDER
         value: gemini
       - key: GEMINI_MODEL
-        value: gemini-3.6-flash
+        value: gemini-flash-lite-latest
       - key: EMBEDDING_PROVIDER
         value: auto
       - key: PYTHONUNBUFFERED

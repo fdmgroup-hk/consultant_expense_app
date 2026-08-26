@@ -95,6 +95,12 @@
           </select>
         </div>
         <div class="field">
+          <label for="ivClient">Client (optional)</label>
+          <select id="ivClient">
+            <option value="">Any client — generic questions</option>
+          </select>
+        </div>
+        <div class="field">
           <label for="ivLevel">Difficulty</label>
           <select id="ivLevel">
             <option value="foundation">Foundation</option>
@@ -110,6 +116,7 @@
 
         <div class="scorecard" id="scorecard" hidden>
           <h3 class="sidebar-heading">This session</h3>
+          <p class="muted" id="interviewFocus"></p>
           <div class="score-big"><span id="scoreAvg">–</span><small>/10 average</small></div>
           <p class="muted" id="scoreCount">0 answered</p>
           <button class="btn btn-ghost block" id="endInterviewBtn">End &amp; review</button>

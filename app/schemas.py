@@ -74,6 +74,8 @@ class InterviewStartRequest(BaseModel):
     role: Role = "general"
     level: Level = "intermediate"
     topic: str | None = Field(default=None, max_length=200)
+    # None means "any client" - questions stay generic across investment banks.
+    client: str | None = Field(default=None, max_length=120)
 
 
 class InterviewQuestionOut(BaseModel):
@@ -107,6 +109,7 @@ class InterviewSummaryOut(BaseModel):
     role: str
     level: str
     topic: str | None = None
+    client: str | None = None
     answered: int
     average_score: float | None = None
     turns: list[dict[str, Any]] = Field(default_factory=list)

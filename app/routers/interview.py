@@ -36,6 +36,14 @@ TOPIC_SEEDS = {
 }
 
 
+async def _guarded(coro):
+    """Await an LLM call, turning provider outages into honest HTTP statuses."""
+    try:
+        return await coro
+    except llm.LLMUnavailable as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+
+
 def _require_llm() -> None:
     if not llm.is_configured():
         raise HTTPException(
@@ -64,16 +72,28 @@ def _load_turns(session_id: str) -> list[dict[str, Any]]:
 
 
 def _retrieve(session: dict[str, Any], extra: str = "") -> list:
+    """Narrowest useful slice of the knowledge base, widening only if it is empty.
+
+    client + role -> role only -> everything. A consultant who picked HSBC should
+    get HSBC material, but an empty question list helps nobody, so each filter is
+    dropped in turn rather than returning nothing.
+    """
     role = session["role_focus"]
+    client = session.get("client_focus") or None
     query = " ".join(
         part for part in [session.get("topic") or "", extra, TOPIC_SEEDS.get(role, "")] if part
     )
-    # Filter to the role's own material first; fall back to everything if that
-    # role has no decks uploaded yet, so a thin knowledge base still helps.
-    hits = retrieval.search(query, role=role if role != "general" else None)
-    if not hits:
-        hits = retrieval.search(query)
-    return hits
+    role_filter = role if role != "general" else None
+
+    for attempt in (
+        {"role": role_filter, "client": client},
+        {"role": role_filter, "client": None},
+        {"role": None, "client": None},
+    ):
+        hits = retrieval.search(query, **attempt)
+        if hits:
+            return hits
+    return []
 
 
 def _transcript(turns: list[dict[str, Any]]) -> str:
@@ -113,11 +133,11 @@ async def _generate_question(session: dict[str, Any], turns: list[dict[str, Any]
         f"{topic_line}\n\nQuestions already asked (do not repeat or lightly reword these):\n{asked}\n\n"
         "Ask the next question."
     )
-    result = await llm.structured(
-        build_interview_system(session["role_focus"], session["level"]),
+    result = await _guarded(llm.structured(
+        build_interview_system(session["role_focus"], session["level"], session.get("client_focus")),
         [{"role": "user", "content": user_turn}],
         INTERVIEW_QUESTION_SCHEMA,
-    )
+    ))
     result["citations"] = [hit.as_citation(i) for i, hit in enumerate(hits, start=1)]
     return result
 
@@ -128,8 +148,10 @@ async def start_interview(request: InterviewStartRequest) -> InterviewQuestionOu
     session_id = str(uuid.uuid4())
     with db.connection() as conn:
         conn.execute(
-            "INSERT INTO interview_sessions (id, role_focus, level, topic) VALUES (?, ?, ?, ?)",
-            (session_id, request.role, request.level, request.topic),
+            "INSERT INTO interview_sessions (id, role_focus, level, topic, client_focus) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (session_id, request.role, request.level, request.topic,
+             (request.client or "").strip() or None),
         )
     session = _load_session(session_id)
 
@@ -164,11 +186,11 @@ async def answer_question(request: InterviewAnswerRequest) -> InterviewFeedbackO
         f"CANDIDATE'S ANSWER: {request.answer}\n\n"
         "Assess this answer."
     )
-    feedback = await llm.structured(
-        build_interview_system(session["role_focus"], session["level"]),
+    feedback = await _guarded(llm.structured(
+        build_interview_system(session["role_focus"], session["level"], session.get("client_focus")),
         [{"role": "user", "content": user_turn}],
         INTERVIEW_FEEDBACK_SCHEMA,
-    )
+    ))
 
     citations = [hit.as_citation(i) for i, hit in enumerate(hits, start=1)]
     stored = dict(feedback)
@@ -229,7 +251,7 @@ def list_interviews() -> list[dict]:
     with db.connection() as conn:
         rows = conn.execute(
             """
-            SELECT s.id, s.role_focus, s.level, s.topic, s.status, s.created_at,
+            SELECT s.id, s.role_focus, s.level, s.topic, s.client_focus, s.status, s.created_at,
                    COUNT(t.id) FILTER (WHERE t.answer IS NOT NULL) AS answered,
                    AVG(t.score) AS average_score
             FROM interview_sessions s
@@ -259,6 +281,7 @@ def interview_summary(session_id: str) -> InterviewSummaryOut:
         role=session["role_focus"],
         level=session["level"],
         topic=session["topic"],
+        client=session.get("client_focus"),
         answered=len(scored),
         average_score=round(sum(scored) / len(scored), 1) if scored else None,
         turns=[

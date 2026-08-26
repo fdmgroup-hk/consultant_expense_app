@@ -317,6 +317,22 @@ def test_older_database_gains_columns_added_after_release():
     assert row["object_key"] is None
 
     assert _apply_column_migrations(conn) == [], "second run must be a no-op"
+
+    # A table that does not exist yet must be skipped, not ALTERed into an error -
+    # the schema DDL creates it with the column already present.
+    assert _existing_columns(conn, "interview_sessions") == set()
+    raw.close()
+
+
+def test_column_migration_skips_tables_that_do_not_exist():
+    import sqlite3
+
+    from app.db import Connection, _apply_column_migrations
+
+    raw = sqlite3.connect(":memory:")
+    raw.row_factory = sqlite3.Row
+    conn = Connection(raw, "sqlite")
+    assert _apply_column_migrations(conn) == [], "no tables at all must not raise"
     raw.close()
 
 

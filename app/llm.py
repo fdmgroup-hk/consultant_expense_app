@@ -36,6 +36,18 @@ class LLMNotConfigured(RuntimeError):
     pass
 
 
+class LLMUnavailable(RuntimeError):
+    """Provider refused the request for a reason the user can act on.
+
+    Carries an HTTP status so routers can pass it straight through instead of
+    turning a rate limit into an opaque 500.
+    """
+
+    def __init__(self, message: str, status_code: int = 503) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+
+
 def provider() -> str:
     return get_settings().llm_provider.lower().strip() or "gemini"
 
@@ -162,24 +174,7 @@ async def _gemini_stream(
             usage = getattr(chunk, "usage_metadata", None) or usage
 
     except errors.ClientError as exc:
-        message = str(exc)
-        if "API_KEY" in message.upper() or getattr(exc, "code", None) == 401:
-            yield {"type": "error", "message": "GOOGLE_API_KEY was rejected. Check the key in .env."}
-        elif getattr(exc, "code", None) == 429:
-            yield {"type": "error", "message": "Gemini free-tier rate limit hit. Wait a minute and try again."}
-        elif getattr(exc, "code", None) == 404:
-            # Google retires models for new keys and the 404 body names the
-            # replacement, so pass that through rather than a generic message.
-            detail = ""
-            if "'message':" in message:
-                detail = message.split("'message':", 1)[1].split("', '", 1)[0].strip(" '\"")
-            yield {"type": "error", "message": (
-                f"Model '{settings.gemini_model}' is not available on this key. "
-                f"{detail} Set GEMINI_MODEL in .env."
-            )}
-        else:
-            logger.exception("Gemini client error")
-            yield {"type": "error", "message": f"Gemini rejected the request: {message[:300]}"}
+        yield {"type": "error", "message": str(_gemini_client_error(exc, settings.gemini_model))}
         return
     except errors.ServerError:
         logger.exception("Gemini server error")
@@ -207,16 +202,48 @@ async def _gemini_stream(
     }
 
 
+def _gemini_client_error(exc: Any, model: str) -> LLMUnavailable:
+    """Turn a Gemini ClientError into something worth showing a consultant."""
+    message = str(exc)
+    code = getattr(exc, "code", None)
+    if code == 429:
+        wait = ""
+        if "retryDelay" in message:
+            wait = message.split("retryDelay", 1)[1].split("'")[2] if "'" in message.split("retryDelay", 1)[1] else ""
+        daily = "per-day" if "PerDay" in message else "per-minute"
+        return LLMUnavailable(
+            f"Gemini's free-tier {daily} quota for {model} is used up"
+            + (f" - it resets in about {wait}." if wait else ".")
+            + " Browsing and search still work. See README 'What it costs' for the options.",
+            429,
+        )
+    if code == 404:
+        detail = ""
+        if "'message':" in message:
+            detail = message.split("'message':", 1)[1].split("', '", 1)[0].strip(" '\"")
+        return LLMUnavailable(f"Model '{model}' is not available on this key. {detail}", 503)
+    if "API_KEY" in message.upper() or code == 401:
+        return LLMUnavailable("GOOGLE_API_KEY was rejected. Check the key.", 503)
+    return LLMUnavailable(f"Gemini rejected the request: {message[:300]}", 502)
+
+
 async def _gemini_structured(
     system: str, messages: list[dict[str, Any]], schema: dict[str, Any], max_tokens: int
 ) -> dict[str, Any]:
+    from google.genai import errors
+
     client = _get_gemini()
     settings = get_settings()
-    response = await client.aio.models.generate_content(
-        model=settings.gemini_model,
-        contents=_gemini_contents(messages),
-        config=_gemini_config(system, max_tokens=max_tokens, schema=schema),
-    )
+    try:
+        response = await client.aio.models.generate_content(
+            model=settings.gemini_model,
+            contents=_gemini_contents(messages),
+            config=_gemini_config(system, max_tokens=max_tokens, schema=schema),
+        )
+    except errors.ClientError as exc:
+        raise _gemini_client_error(exc, settings.gemini_model) from exc
+    except errors.ServerError as exc:
+        raise LLMUnavailable("Gemini is having trouble - try again shortly.", 503) from exc
     text = (response.text or "").strip()
     if not text:
         raise RuntimeError(

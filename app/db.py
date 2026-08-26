@@ -84,12 +84,13 @@ CREATE TABLE IF NOT EXISTS chat_messages (
 CREATE INDEX IF NOT EXISTS idx_chat_messages_session ON chat_messages(session_id);
 
 CREATE TABLE IF NOT EXISTS interview_sessions (
-    id          TEXT PRIMARY KEY,
-    role_focus  TEXT NOT NULL,
-    level       TEXT NOT NULL,
-    topic       TEXT,
-    status      TEXT NOT NULL DEFAULT 'active',
-    created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+    id            TEXT PRIMARY KEY,
+    role_focus    TEXT NOT NULL,
+    level         TEXT NOT NULL,
+    topic         TEXT,
+    client_focus  TEXT,
+    status        TEXT NOT NULL DEFAULT 'active',
+    created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS interview_turns (
@@ -170,12 +171,13 @@ CREATE TABLE IF NOT EXISTS chat_messages (
 CREATE INDEX IF NOT EXISTS idx_chat_messages_session ON chat_messages(session_id);
 
 CREATE TABLE IF NOT EXISTS interview_sessions (
-    id          TEXT PRIMARY KEY,
-    role_focus  TEXT NOT NULL,
-    level       TEXT NOT NULL,
-    topic       TEXT,
-    status      TEXT NOT NULL DEFAULT 'active',
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+    id            TEXT PRIMARY KEY,
+    role_focus    TEXT NOT NULL,
+    level         TEXT NOT NULL,
+    topic         TEXT,
+    client_focus  TEXT,
+    status        TEXT NOT NULL DEFAULT 'active',
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE TABLE IF NOT EXISTS interview_turns (
@@ -333,6 +335,7 @@ def _get_pool():
 #: these added explicitly or every query naming them fails.
 _ADDED_COLUMNS: tuple[tuple[str, str, str], ...] = (
     ("documents", "object_key", "TEXT"),
+    ("interview_sessions", "client_focus", "TEXT"),
 )
 
 
@@ -351,7 +354,12 @@ def _existing_columns(conn: Connection, table: str) -> set[str]:
 def _apply_column_migrations(conn: Connection) -> list[str]:
     applied: list[str] = []
     for table, column, coltype in _ADDED_COLUMNS:
-        if column not in _existing_columns(conn, table):
+        existing = _existing_columns(conn, table)
+        if not existing:
+            # Table absent entirely - the schema DDL above already creates it with
+            # the column, so there is nothing to patch. ALTERing it would error.
+            continue
+        if column not in existing:
             conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {coltype}")
             applied.append(f"{table}.{column}")
     return applied

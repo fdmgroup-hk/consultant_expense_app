@@ -99,6 +99,8 @@ preparing for a technology placement at an investment bank.
 ROLE BEING INTERVIEWED FOR: {role_label}
 {role_brief}
 
+{client_line}
+
 DIFFICULTY: {level}
 {level_guidance}
 
@@ -172,12 +174,29 @@ INTERVIEW_FEEDBACK_SCHEMA = {
 }
 
 
-def build_interview_system(role: str, level: str) -> str:
+def build_interview_system(role: str, level: str, client: str | None = None) -> str:
     role_key = role if role in ROLE_BRIEFS else "general"
     level_key = level if level in LEVEL_GUIDANCE else "intermediate"
+
+    if client:
+        client_line = (
+            f"CLIENT: {client}. Interview as though hiring for a placement at {client} "
+            f"specifically. Where the excerpts name {client}'s systems, processes or "
+            "incidents, build questions around those rather than generic equivalents - "
+            "that specificity is the whole point of practising against real handover "
+            f"material. Do not invent {client} details the excerpts do not support; if "
+            "they are thin, ask a question that would be fair at any bank instead."
+        )
+    else:
+        client_line = (
+            "CLIENT: not specified. Keep questions generic across investment banks - do "
+            "not assume a particular bank's systems or naming."
+        )
+
     return INTERVIEW_SYSTEM_TEMPLATE.format(
         role_label=ROLE_LABELS[role_key],
         role_brief=ROLE_BRIEFS[role_key],
+        client_line=client_line,
         level=level_key,
         level_guidance=LEVEL_GUIDANCE[level_key],
     )
