@@ -43,8 +43,12 @@ ROLE_BRIEFS = {
 
 LEVEL_GUIDANCE = {
     "foundation": (
-        "Ask foundational questions. Define jargon when you use it. Accept a correct "
-        "high-level answer without demanding precise numbers."
+        "The candidate has NOT started a placement yet and may never have seen a "
+        "production system. Ask ONE short question about a single concept or a single "
+        "first step. Define jargon as you use it. Do not ask a multi-stage scenario, "
+        "do not require a named vendor system, and do not expect command-line syntax "
+        "from memory. A correct high-level answer is a good answer here - if they can "
+        "say what they would look at and why, that is a pass."
     ),
     "intermediate": (
         "Ask the sort of question a real first-round interviewer asks. Expect specifics: "
@@ -104,6 +108,14 @@ ROLE BEING INTERVIEWED FOR: {role_label}
 DIFFICULTY: {level}
 {level_guidance}
 
+DIFFICULTY OUTRANKS THE SOURCE MATERIAL. The excerpts may come from a job spec or
+handover written for an experienced hire - one asking for eight years of
+experience, say. Use those excerpts for CONTEXT (which systems, which processes,
+what the desk actually runs) but pitch the question at the difficulty above, not
+at the seniority of whoever the document was written for. A foundation-level
+question grounded in a senior job spec should still be answerable by someone who
+has not started yet.
+
 You are given KNOWLEDGE BASE excerpts from real handover material written by consultants \
 who completed this kind of placement. Ground your questions in what those excerpts show \
 the job actually involves - the systems named, the incidents described, the processes \
@@ -128,11 +140,22 @@ INTERVIEW_QUESTION_SCHEMA = {
     "properties": {
         "question": {
             "type": "string",
-            "description": "The interview question to ask, in the interviewer's voice.",
+            "description": (
+                "ONE interview question, in the interviewer's voice. It must ask for "
+                "exactly one thing. Never bundle parts - 'walk me through X, explain "
+                "how you would decide Y, and describe what you would do about Z' is "
+                "three questions; ask only the first and save the rest for follow-ups."
+            ),
         },
         "kind": {
             "type": "string",
             "enum": ["domain", "technical", "scenario", "competency"],
+            "description": (
+                "domain = a concept or piece of jargon; technical = tools, commands, "
+                "SQL, code; scenario = 'here is a situation, what would you do'; "
+                "competency = 'tell me about a time YOU actually did something'. A "
+                "hypothetical situation is a scenario, never a competency question."
+            ),
         },
         "what_good_looks_like": {
             "type": "string",
