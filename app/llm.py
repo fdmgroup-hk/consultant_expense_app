@@ -2,9 +2,10 @@
 
 Two providers behind one interface, chosen by ``LLM_PROVIDER``:
 
-* ``groq``      - Groq, serving openai/gpt-oss-120b by default. Free tier with far
-                  more headroom than Gemini's 20-requests-per-day-per-model, and
-                  very fast. The default.
+* ``cloudflare`` - Cloudflare Workers AI, serving @cf/openai/gpt-oss-120b. Free
+                  allowance of 10,000 Neurons/day, which measures out at roughly
+                  75 grounded answers a day. The default.
+* ``groq``      - Groq, serving openai/gpt-oss-120b. Free tier, very fast.
 * ``gemini``    - Google Gemini. Free but tightly rate limited per model per day.
 * ``anthropic`` - Claude. Paid, no free tier, stronger on nuanced interview
                   feedback. Kept so the choice is reversible without a rewrite.
@@ -51,12 +52,13 @@ class LLMUnavailable(RuntimeError):
 
 
 def provider() -> str:
-    return get_settings().llm_provider.lower().strip() or "groq"
+    return get_settings().llm_provider.lower().strip() or "cloudflare"
 
 
 def active_model() -> str:
     settings = get_settings()
     return {
+        "cloudflare": settings.cf_model,
         "groq": settings.groq_model,
         "gemini": settings.gemini_model,
     }.get(provider(), settings.anthropic_model)
@@ -64,6 +66,8 @@ def active_model() -> str:
 
 def is_configured() -> bool:
     settings = get_settings()
+    if provider() == "cloudflare":
+        return bool(settings.cf_api_token and settings.cf_account_id)
     return bool({
         "groq": settings.groq_api_key,
         "gemini": settings.google_api_key,
@@ -71,6 +75,12 @@ def is_configured() -> bool:
 
 
 def _missing_key_message() -> str:
+    if provider() == "cloudflare":
+        return (
+            "CF_API_TOKEN and CF_ACCOUNT_ID must both be set. The token comes from "
+            "Cloudflare > My Profile > API Tokens (Workers AI permission); the account "
+            "id is in the dashboard URL."
+        )
     if provider() == "groq":
         return (
             "GROQ_API_KEY is not set. Get a free key at https://console.groq.com/keys "
@@ -263,6 +273,142 @@ async def _gemini_structured(
             "Gemini returned no content. This usually means the response was blocked "
             "or the token limit was hit before any JSON was produced."
         )
+    return json.loads(text)
+
+
+# ========================================================= Cloudflare Workers AI
+
+_cf_client = None
+
+
+def _get_cloudflare():
+    """Workers AI exposes an OpenAI-compatible endpoint, so the OpenAI SDK is the
+    intended client - there is no separate Cloudflare chat SDK to prefer."""
+    global _cf_client
+    if _cf_client is None:
+        from openai import AsyncOpenAI
+
+        settings = get_settings()
+        if not (settings.cf_api_token and settings.cf_account_id):
+            raise LLMNotConfigured(_missing_key_message())
+        _cf_client = AsyncOpenAI(
+            api_key=settings.cf_api_token,
+            base_url=f"https://api.cloudflare.com/client/v4/accounts/{settings.cf_account_id}/ai/v1",
+            timeout=180.0,
+        )
+    return _cf_client
+
+
+def _cf_messages(system: str, messages: list[dict[str, Any]]) -> list[dict[str, str]]:
+    return [{"role": "system", "content": system}] + [
+        {"role": m["role"], "content": m["content"]} for m in messages
+    ]
+
+
+def _cf_error(exc: Any, model: str) -> "LLMUnavailable":
+    import openai
+
+    if isinstance(exc, openai.RateLimitError):
+        return LLMUnavailable(
+            "Cloudflare Workers AI's free daily allowance (10,000 Neurons) is used up. "
+            "It resets each day. Browsing and search still work.",
+            429,
+        )
+    if isinstance(exc, openai.AuthenticationError):
+        return LLMUnavailable("CF_API_TOKEN was rejected. Check the token.", 503)
+    if isinstance(exc, openai.NotFoundError):
+        return LLMUnavailable(
+            f"Model '{model}' is not available on this account. Pick one listed at "
+            "https://developers.cloudflare.com/workers-ai/models/",
+            503,
+        )
+    if isinstance(exc, openai.APIConnectionError):
+        return LLMUnavailable("Could not reach Cloudflare. Check the network connection.", 502)
+    return LLMUnavailable(
+        f"Workers AI rejected the request: {str(exc)[:300]}",
+        getattr(exc, "status_code", 502) or 502,
+    )
+
+
+def _cf_usage(usage: Any) -> dict[str, int]:
+    return {
+        "input_tokens": getattr(usage, "prompt_tokens", 0) or 0,
+        "output_tokens": getattr(usage, "completion_tokens", 0) or 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 0,
+    }
+
+
+async def _cf_stream(
+    system: str, messages: list[dict[str, Any]], max_tokens: int
+) -> AsyncIterator[dict[str, Any]]:
+    import openai
+
+    client = _get_cloudflare()
+    settings = get_settings()
+    usage, finish, neurons = None, None, None
+
+    try:
+        stream = await client.chat.completions.create(
+            model=settings.cf_model,
+            messages=_cf_messages(system, messages),
+            stream=True,
+            max_tokens=min(max_tokens, settings.cf_max_output_tokens),
+        )
+        async for chunk in stream:
+            if chunk.choices:
+                choice = chunk.choices[0]
+                # gpt-oss models expose their reasoning separately from the answer,
+                # so it can go to the collapsible panel rather than the response.
+                reasoning = getattr(choice.delta, "reasoning", None)
+                if reasoning and settings.cf_show_thinking:
+                    yield {"type": "thinking", "text": reasoning}
+                if choice.delta.content:
+                    yield {"type": "text", "text": choice.delta.content}
+                finish = choice.finish_reason or finish
+            if getattr(chunk, "usage", None):
+                usage = chunk.usage
+                neurons = getattr(chunk.usage, "neurons", None)
+
+    except openai.APIError as exc:
+        yield {"type": "error", "message": str(_cf_error(exc, settings.cf_model))}
+        return
+    except Exception as exc:
+        logger.exception("Workers AI request failed")
+        yield {"type": "error", "message": f"Could not reach Workers AI: {exc}"}
+        return
+
+    if neurons:
+        # The free tier is metered in Neurons, not requests, so log the real cost -
+        # it is the only way to know how much of the daily 10,000 is left.
+        logger.info("Workers AI: %.1f neurons for this answer", neurons)
+
+    yield {"type": "done", "stop_reason": finish or "stop", "usage": _cf_usage(usage)}
+
+
+async def _cf_structured(
+    system: str, messages: list[dict[str, Any]], schema: dict[str, Any], max_tokens: int
+) -> dict[str, Any]:
+    import openai
+
+    client = _get_cloudflare()
+    settings = get_settings()
+    try:
+        response = await client.chat.completions.create(
+            model=settings.cf_model,
+            messages=_cf_messages(system, messages),
+            max_tokens=min(max_tokens, settings.cf_max_output_tokens),
+            response_format={
+                "type": "json_schema",
+                "json_schema": {"name": "result", "schema": schema, "strict": True},
+            },
+        )
+    except openai.APIError as exc:
+        raise _cf_error(exc, settings.cf_model) from exc
+
+    text = (response.choices[0].message.content or "").strip()
+    if not text:
+        raise LLMUnavailable("Workers AI returned no content for a structured request.", 502)
     return json.loads(text)
 
 
@@ -535,7 +681,10 @@ async def stream_answer(
     max_tokens: int = 32000,
 ) -> AsyncIterator[dict[str, Any]]:
     """Yield ``{"type": ...}`` events: ``thinking``, ``text``, ``done``, ``error``."""
-    if provider() == "groq":
+    if provider() == "cloudflare":
+        async for event in _cf_stream(system, messages, max_tokens):
+            yield event
+    elif provider() == "groq":
         async for event in _groq_stream(system, messages, max_tokens):
             yield event
     elif provider() == "gemini":
@@ -555,6 +704,8 @@ async def structured(
     max_tokens: int = 16000,
 ) -> dict[str, Any]:
     """One call that must return JSON matching ``schema``."""
+    if provider() == "cloudflare":
+        return await _cf_structured(system, messages, schema, max_tokens)
     if provider() == "groq":
         return await _groq_structured(system, messages, schema, max_tokens)
     if provider() == "gemini":

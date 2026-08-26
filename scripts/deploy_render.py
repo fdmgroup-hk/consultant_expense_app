@@ -88,8 +88,25 @@ def build_env_vars() -> list[dict[str, str]]:
         if not service_key and (scratch / "service_key.txt").is_file():
             service_key = (scratch / "service_key.txt").read_text(encoding="utf-8").strip()
 
+    # Only the active provider's credentials are sent, so switching provider does
+    # not leave a stale key from a previous one set on the service.
+    provider = pick("LLM_PROVIDER", "cloudflare").lower()
+    provider_vars = {
+        "cloudflare": {"CF_ACCOUNT_ID": pick("CF_ACCOUNT_ID"),
+                       "CF_API_TOKEN": pick("CF_API_TOKEN"),
+                       "CF_MODEL": pick("CF_MODEL", "@cf/openai/gpt-oss-120b")},
+        "groq": {"GROQ_API_KEY": pick("GROQ_API_KEY"),
+                 "GROQ_MODEL": pick("GROQ_MODEL", "openai/gpt-oss-120b")},
+        "gemini": {"GOOGLE_API_KEY": pick("GOOGLE_API_KEY"),
+                   "GEMINI_MODEL": pick("GEMINI_MODEL", "gemini-flash-lite-latest")},
+        "anthropic": {"ANTHROPIC_API_KEY": pick("ANTHROPIC_API_KEY"),
+                      "ANTHROPIC_MODEL": pick("ANTHROPIC_MODEL", "claude-opus-5")},
+    }.get(provider)
+    if provider_vars is None:
+        raise SystemExit(f"Unknown LLM_PROVIDER '{provider}' in .env/.env.render.")
+
     required = {
-        "GOOGLE_API_KEY": pick("GOOGLE_API_KEY"),
+        **provider_vars,
         "DATABASE_URL": database_url,
         "SUPABASE_SERVICE_KEY": service_key,
         "ADMIN_TOKEN": pick("ADMIN_TOKEN"),
@@ -97,13 +114,12 @@ def build_env_vars() -> list[dict[str, str]]:
     missing = [k for k, v in required.items() if not v]
     if missing:
         raise SystemExit(
-            "These values are needed but not found in .env: " + ", ".join(missing)
+            "These values are needed but not found in .env/.env.render: " + ", ".join(missing)
         )
 
     env_vars = {
         **required,
-        "LLM_PROVIDER": "gemini",
-        "GEMINI_MODEL": pick("GEMINI_MODEL", "gemini-3.6-flash"),
+        "LLM_PROVIDER": provider,
         "STORAGE_BACKEND": "supabase",
         "SUPABASE_URL": pick("SUPABASE_URL", "https://pxjiljyswcgcryapffir.supabase.co"),
         "SUPABASE_BUCKET": pick("SUPABASE_BUCKET", "consultant-originals"),
@@ -136,7 +152,8 @@ def call(key: str, method: str, path: str, body: dict | None = None):
 
 
 def redact(env_vars: list[dict[str, str]]) -> list[dict[str, str]]:
-    secret = {"GOOGLE_API_KEY", "DATABASE_URL", "SUPABASE_SERVICE_KEY", "ADMIN_TOKEN", "APP_PASSWORD"}
+    secret = {"GOOGLE_API_KEY", "GROQ_API_KEY", "CF_API_TOKEN", "ANTHROPIC_API_KEY",
+              "DATABASE_URL", "SUPABASE_SERVICE_KEY", "ADMIN_TOKEN", "APP_PASSWORD"}
     return [
         {"key": e["key"], "value": ("<set, %d chars>" % len(e["value"])) if e["key"] in secret else e["value"]}
         for e in env_vars

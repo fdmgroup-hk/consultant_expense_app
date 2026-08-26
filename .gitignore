@@ -31,3 +31,7 @@ render_key.txt
 
 # deployment env values (Supabase/Render) - never commit
 .env.render
+
+# Cloudflare token - never commit
+cf_token.txt
+cf_account.txt

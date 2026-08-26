@@ -17,7 +17,14 @@ class Settings(BaseSettings):
     )
 
     # --- LLM provider ---
-    llm_provider: str = "groq"  # groq | gemini | anthropic
+    llm_provider: str = "cloudflare"  # cloudflare | groq | gemini | anthropic
+
+    # --- Cloudflare Workers AI (default; free 10,000 Neurons/day) ---
+    cf_account_id: str = ""
+    cf_api_token: str = ""
+    cf_model: str = "@cf/openai/gpt-oss-120b"
+    cf_max_output_tokens: int = 8000
+    cf_show_thinking: bool = True
 
     # --- Groq (default; free tier, openai/gpt-oss-120b) ---
     groq_api_key: str = ""
