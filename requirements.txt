@@ -7,7 +7,8 @@ pydantic-settings==2.7.1
 numpy==2.2.1
 
 # --- LLM providers ---
-google-genai>=2.0.0,<3        # default: Gemini free tier
+groq>=1.0.0,<2                # default: Groq free tier (openai/gpt-oss-120b)
+google-genai>=2.0.0,<3        # alternative: Gemini (tight free quota)
 anthropic>=1.0.0,<2           # optional alternative, set LLM_PROVIDER=anthropic
 
 # --- document extraction ---

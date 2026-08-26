@@ -42,7 +42,7 @@ cp .env.example .env                                        # then edit it
 
 Open **http://127.0.0.1:8000**. Interactive API docs are at `/docs`.
 
-You need one thing to get started: a **free** Google Gemini key from <https://aistudio.google.com/apikey> (no card required). Put it in `.env` as `GOOGLE_API_KEY`. Everything else has a working default.
+You need one thing to get started: a **free** Groq key from <https://console.groq.com/keys> (no card required). Put it in `.env` as `GROQ_API_KEY`. Everything else has a working default.
 
 Prefer Claude? Set `LLM_PROVIDER=anthropic` and `ANTHROPIC_API_KEY` instead — both providers are supported and the switch touches only [app/llm.py](app/llm.py).
 
@@ -187,8 +187,10 @@ Everything lives in `.env` (see `.env.example`).
 
 | Setting | Default | Notes |
 |---|---|---|
-| `LLM_PROVIDER` | `gemini` | `gemini` (free) or `anthropic` (paid) |
-| `GOOGLE_API_KEY` | — | Free key from Google AI Studio; required for chat and practice |
+| `LLM_PROVIDER` | `groq` | `groq` (free), `gemini` (free, tight quota) or `anthropic` (paid) |
+| `GROQ_API_KEY` | — | Free key from console.groq.com; required for chat and practice |
+| `GROQ_MODEL` | `openai/gpt-oss-120b` | Open-weight reasoning model on Groq |
+| `GOOGLE_API_KEY` | — | Only when `LLM_PROVIDER=gemini` |
 | `GEMINI_MODEL` | `gemini-flash-lite-latest` | Covered by the free tier |
 | `ANTHROPIC_API_KEY` | — | Only when `LLM_PROVIDER=anthropic` |
 | `ANTHROPIC_MODEL` | `claude-opus-5` | `claude-sonnet-5` is cheaper and still strong here |

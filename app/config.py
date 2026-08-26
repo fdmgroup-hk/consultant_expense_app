@@ -17,7 +17,14 @@ class Settings(BaseSettings):
     )
 
     # --- LLM provider ---
-    llm_provider: str = "gemini"  # gemini | anthropic
+    llm_provider: str = "groq"  # groq | gemini | anthropic
+
+    # --- Groq (default; free tier, openai/gpt-oss-120b) ---
+    groq_api_key: str = ""
+    groq_model: str = "openai/gpt-oss-120b"
+    groq_reasoning_effort: str = "medium"  # none | default | low | medium | high
+    groq_max_output_tokens: int = 32766
+    groq_show_thinking: bool = True
 
     # --- Google Gemini (default; free tier) ---
     google_api_key: str = ""

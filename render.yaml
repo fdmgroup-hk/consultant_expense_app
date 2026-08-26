@@ -15,7 +15,7 @@ services:
 
     envVars:
       # --- secrets: entered in the Render dashboard, never committed ---
-      - key: GOOGLE_API_KEY     # free key from https://aistudio.google.com/apikey
+      - key: GROQ_API_KEY       # free key from https://console.groq.com/keys
         sync: false
       - key: DATABASE_URL         # Supabase > Connection string > Transaction pooler
         sync: false
@@ -36,9 +36,11 @@ services:
       - key: SUPABASE_BUCKET
         value: consultant-originals
       - key: LLM_PROVIDER
-        value: gemini
-      - key: GEMINI_MODEL
-        value: gemini-flash-lite-latest
+        value: groq
+      - key: GROQ_MODEL
+        value: openai/gpt-oss-120b
+      - key: GROQ_REASONING_EFFORT
+        value: medium
       - key: EMBEDDING_PROVIDER
         value: auto
       - key: PYTHONUNBUFFERED

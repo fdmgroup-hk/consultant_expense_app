@@ -401,3 +401,45 @@ def test_provider_selection_and_key_detection(monkeypatch):
     monkeypatch.setattr(settings, "anthropic_api_key", "")
     assert llm.is_configured() is False
     assert "console.anthropic.com" in llm._missing_key_message()
+
+
+def test_groq_messages_put_system_first_and_keep_roles():
+    """Groq speaks OpenAI chat shape - system is a message, assistant stays 'assistant'."""
+    from app.llm import _groq_messages
+
+    out = _groq_messages("SYSTEM PROMPT", [
+        {"role": "user", "content": "what is novation?"},
+        {"role": "assistant", "content": "It replaces a counterparty."},
+    ])
+    assert out[0] == {"role": "system", "content": "SYSTEM PROMPT"}
+    assert [m["role"] for m in out] == ["system", "user", "assistant"]
+
+
+def test_schemas_are_valid_for_groq_strict_mode():
+    """Groq strict json_schema REQUIRES additionalProperties:false - the opposite of
+    Gemini, which rejects it. The shared schemas must satisfy Groq as-is."""
+    from app.prompts import INTERVIEW_FEEDBACK_SCHEMA, INTERVIEW_QUESTION_SCHEMA
+
+    for schema in (INTERVIEW_QUESTION_SCHEMA, INTERVIEW_FEEDBACK_SCHEMA):
+        assert schema["additionalProperties"] is False
+        assert set(schema["required"]) == set(schema["properties"])
+
+
+def test_provider_dispatch_covers_all_three(monkeypatch):
+    from app import llm
+    from app.config import get_settings
+
+    settings = get_settings()
+    for name, key_field, key_url in [
+        ("groq", "groq_api_key", "console.groq.com"),
+        ("gemini", "google_api_key", "aistudio.google.com"),
+        ("anthropic", "anthropic_api_key", "console.anthropic.com"),
+    ]:
+        monkeypatch.setattr(settings, "llm_provider", name)
+        monkeypatch.setattr(settings, key_field, "")
+        assert llm.provider() == name
+        assert llm.is_configured() is False
+        assert key_url in llm._missing_key_message()
+        monkeypatch.setattr(settings, key_field, "k")
+        assert llm.is_configured() is True
+        assert llm.active_model()

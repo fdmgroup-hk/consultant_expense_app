@@ -2,8 +2,10 @@
 
 Two providers behind one interface, chosen by ``LLM_PROVIDER``:
 
-* ``gemini``    - Google Gemini. Free tier, self-signup key, hosted inference so
-                  it runs fine on a 512MB Render instance. The default.
+* ``groq``      - Groq, serving openai/gpt-oss-120b by default. Free tier with far
+                  more headroom than Gemini's 20-requests-per-day-per-model, and
+                  very fast. The default.
+* ``gemini``    - Google Gemini. Free but tightly rate limited per model per day.
 * ``anthropic`` - Claude. Paid, no free tier, stronger on nuanced interview
                   feedback. Kept so the choice is reversible without a rewrite.
 
@@ -49,20 +51,31 @@ class LLMUnavailable(RuntimeError):
 
 
 def provider() -> str:
-    return get_settings().llm_provider.lower().strip() or "gemini"
+    return get_settings().llm_provider.lower().strip() or "groq"
 
 
 def active_model() -> str:
     settings = get_settings()
-    return settings.gemini_model if provider() == "gemini" else settings.anthropic_model
+    return {
+        "groq": settings.groq_model,
+        "gemini": settings.gemini_model,
+    }.get(provider(), settings.anthropic_model)
 
 
 def is_configured() -> bool:
     settings = get_settings()
-    return bool(settings.google_api_key if provider() == "gemini" else settings.anthropic_api_key)
+    return bool({
+        "groq": settings.groq_api_key,
+        "gemini": settings.google_api_key,
+    }.get(provider(), settings.anthropic_api_key))
 
 
 def _missing_key_message() -> str:
+    if provider() == "groq":
+        return (
+            "GROQ_API_KEY is not set. Get a free key at https://console.groq.com/keys "
+            "and add it to .env"
+        )
     if provider() == "gemini":
         return (
             "GOOGLE_API_KEY is not set. Get a free key at https://aistudio.google.com/apikey "
@@ -253,6 +266,138 @@ async def _gemini_structured(
     return json.loads(text)
 
 
+# ======================================================================= Groq
+
+_groq_client = None
+
+
+def _get_groq():
+    global _groq_client
+    if _groq_client is None:
+        from groq import AsyncGroq
+
+        settings = get_settings()
+        if not settings.groq_api_key:
+            raise LLMNotConfigured(_missing_key_message())
+        _groq_client = AsyncGroq(api_key=settings.groq_api_key, timeout=180.0)
+    return _groq_client
+
+
+def _groq_messages(system: str, messages: list[dict[str, Any]]) -> list[dict[str, str]]:
+    """Groq speaks the OpenAI chat shape: the system prompt is just the first message."""
+    return [{"role": "system", "content": system}] + [
+        {"role": m["role"], "content": m["content"]} for m in messages
+    ]
+
+
+def _groq_error(exc: Any, model: str) -> "LLMUnavailable":
+    import groq
+
+    if isinstance(exc, groq.RateLimitError):
+        return LLMUnavailable(
+            "Groq's rate limit is reached. Groq resets quickly - wait a moment and "
+            "retry. Browsing and search still work.",
+            429,
+        )
+    if isinstance(exc, groq.AuthenticationError):
+        return LLMUnavailable("GROQ_API_KEY was rejected. Check the key.", 503)
+    if isinstance(exc, groq.NotFoundError):
+        return LLMUnavailable(
+            f"Model '{model}' is not available on this key. Set GROQ_MODEL to one "
+            "listed at https://console.groq.com/docs/models",
+            503,
+        )
+    if isinstance(exc, groq.APIConnectionError):
+        return LLMUnavailable("Could not reach Groq. Check the network connection.", 502)
+    return LLMUnavailable(
+        f"Groq rejected the request: {str(exc)[:300]}", getattr(exc, "status_code", 502) or 502
+    )
+
+
+async def _groq_stream(
+    system: str, messages: list[dict[str, Any]], max_tokens: int
+) -> AsyncIterator[dict[str, Any]]:
+    import groq
+
+    client = _get_groq()
+    settings = get_settings()
+    usage, finish = None, None
+
+    try:
+        stream = await client.chat.completions.create(
+            model=settings.groq_model,
+            messages=_groq_messages(system, messages),
+            stream=True,
+            max_completion_tokens=min(max_tokens, settings.groq_max_output_tokens),
+            # "parsed" splits reasoning out of the answer, so it can go to the
+            # collapsible panel instead of polluting the response text.
+            reasoning_format="parsed" if settings.groq_show_thinking else "hidden",
+            reasoning_effort=settings.groq_reasoning_effort,
+        )
+        async for chunk in stream:
+            if not chunk.choices:
+                usage = getattr(chunk, "usage", None) or usage
+                continue
+            choice = chunk.choices[0]
+            reasoning = getattr(choice.delta, "reasoning", None)
+            if reasoning:
+                yield {"type": "thinking", "text": reasoning}
+            if choice.delta.content:
+                yield {"type": "text", "text": choice.delta.content}
+            finish = choice.finish_reason or finish
+            usage = getattr(chunk, "usage", None) or usage
+
+    except groq.APIError as exc:
+        yield {"type": "error", "message": str(_groq_error(exc, settings.groq_model))}
+        return
+    except Exception as exc:
+        logger.exception("Groq request failed")
+        yield {"type": "error", "message": f"Could not reach Groq: {exc}"}
+        return
+
+    yield {
+        "type": "done",
+        "stop_reason": finish or "stop",
+        "usage": {
+            "input_tokens": getattr(usage, "prompt_tokens", 0) or 0,
+            "output_tokens": getattr(usage, "completion_tokens", 0) or 0,
+            "cache_read_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+        },
+    }
+
+
+async def _groq_structured(
+    system: str, messages: list[dict[str, Any]], schema: dict[str, Any], max_tokens: int
+) -> dict[str, Any]:
+    import groq
+
+    client = _get_groq()
+    settings = get_settings()
+    try:
+        response = await client.chat.completions.create(
+            model=settings.groq_model,
+            messages=_groq_messages(system, messages),
+            max_completion_tokens=min(max_tokens, settings.groq_max_output_tokens),
+            # Reasoning hidden so message.content is pure JSON. Strict mode on:
+            # unlike Gemini, Groq *requires* additionalProperties:false, which these
+            # schemas already declare, so nothing needs rewriting.
+            reasoning_format="hidden",
+            reasoning_effort=settings.groq_reasoning_effort,
+            response_format={
+                "type": "json_schema",
+                "json_schema": {"name": "result", "schema": schema, "strict": True},
+            },
+        )
+    except groq.APIError as exc:
+        raise _groq_error(exc, settings.groq_model) from exc
+
+    text = (response.choices[0].message.content or "").strip()
+    if not text:
+        raise LLMUnavailable("Groq returned no content for a structured request.", 502)
+    return json.loads(text)
+
+
 # ================================================================== Anthropic
 
 _anthropic_client = None
@@ -390,7 +535,10 @@ async def stream_answer(
     max_tokens: int = 32000,
 ) -> AsyncIterator[dict[str, Any]]:
     """Yield ``{"type": ...}`` events: ``thinking``, ``text``, ``done``, ``error``."""
-    if provider() == "gemini":
+    if provider() == "groq":
+        async for event in _groq_stream(system, messages, max_tokens):
+            yield event
+    elif provider() == "gemini":
         async for event in _gemini_stream(system, messages, max_tokens):
             yield event
     else:
@@ -407,6 +555,8 @@ async def structured(
     max_tokens: int = 16000,
 ) -> dict[str, Any]:
     """One call that must return JSON matching ``schema``."""
+    if provider() == "groq":
+        return await _groq_structured(system, messages, schema, max_tokens)
     if provider() == "gemini":
         return await _gemini_structured(system, messages, schema, max_tokens)
     return await _anthropic_structured(system, messages, schema, effort, max_tokens)
