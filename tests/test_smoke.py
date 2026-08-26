@@ -535,3 +535,27 @@ def test_interview_export_renders_commands_and_omits_empty_sections():
     assert md.count("Commands a strong junior would use") == 1
     assert md.count("Troubleshooting order") == 1
     assert "What is novation?" in md
+
+
+def test_command_line_questions_are_detected_in_code_not_left_to_the_model():
+    """The model returned an empty walkthrough for 'what would you check on the
+    server', so the decision is made here and forced in the prompt."""
+    from app.routers.interview import _is_command_line_question
+
+    for question in [
+        "What are the first three things you would check on the server?",
+        "A Linux box is showing high CPU. What do you look at?",
+        "The overnight batch job failed. How do you investigate?",
+        "How would you find an error in a large log file?",
+    ]:
+        assert _is_command_line_question(question, None), question
+
+    for question in [
+        "What is the difference between clearing and settlement?",
+        "Tell me about a time you worked under pressure.",
+        "What makes a good requirement?",
+    ]:
+        assert not _is_command_line_question(question, None), question
+
+    # the topic field counts too - a terse question with a Linux topic still qualifies
+    assert _is_command_line_question("What would you check first?", "Linux")

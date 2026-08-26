@@ -29,6 +29,22 @@ from ..schemas import (
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/interview", tags=["interview"])
 
+#: Whether a question is command-line shaped is decided here, not left to the
+#: model - it returned an empty walkthrough for "the first three things you would
+#: check on the server", which is exactly the case the feature exists for.
+_COMMAND_HINTS = (
+    "linux", "unix", "command", "shell", "script", "terminal", "server", "host",
+    "log", "logs", "process", "cpu", "memory", "disk", "filesystem", "service",
+    "daemon", "systemctl", "journalctl", "grep", "restart", "batch", "job",
+    "crontab", "autosys", "control-m", "port", "network",
+)
+
+
+def _is_command_line_question(question: str, topic: str | None) -> bool:
+    text = f"{question} {topic or ''}".lower()
+    return any(hint in text for hint in _COMMAND_HINTS)
+
+
 TOPIC_SEEDS = {
     "developer": "developer responsibilities technical stack build deploy trade systems",
     "production_support": "production support incident triage escalation batch monitoring outage",
@@ -181,10 +197,19 @@ async def answer_question(request: InterviewAnswerRequest) -> InterviewFeedbackO
 
     hits = _retrieve(session, extra=f"{current['question']} {request.answer}")
     prior = [t for t in turns if t["ordinal"] < current["ordinal"]]
+    command_directive = (
+        "THIS IS A COMMAND-LINE QUESTION. command_walkthrough MUST contain 4-8 ordered "
+        "steps, each with one runnable command, and minimum_commands MUST contain 5-8 "
+        "complete commands. Do not return empty arrays for either."
+        if _is_command_line_question(current["question"], session.get("topic"))
+        else "THIS IS NOT A COMMAND-LINE QUESTION. Return empty arrays for both "
+             "command_walkthrough and minimum_commands."
+    )
     user_turn = (
         f"{format_context(hits)}\n\n---\n\n{_transcript(prior)}\n\n"
         f"QUESTION YOU ASKED: {current['question']}\n\n"
         f"CANDIDATE'S ANSWER: {request.answer}\n\n"
+        f"{command_directive}\n\n"
         "Assess this answer."
     )
     feedback = await _guarded(llm.structured(
