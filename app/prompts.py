@@ -97,6 +97,32 @@ not a generic "any questions?".
 
 # --- Interview practice --------------------------------------------------
 
+#: Injected into the system prompt only when the requested topic is a programming
+#: one. Without it a "Java" session retrieves the client's job spec and asks
+#: concept-recall questions about whatever the spec happens to mention, because
+#: nothing else in the prompt knows that a coding topic means code.
+CODING_GUIDANCE = """CODING PRACTICE IS ACTIVE. The consultant asked to practise: {topic}.
+
+This session alternates between two question shapes. The user turn tells you which one to ask - obey it, do not choose for yourself.
+
+* CONCEPT - a language or platform question answered in words. Real depth, not trivia: collections and their trade-offs, concurrency and memory visibility, garbage collection, generics, equals/hashCode, exceptions and resource handling, the standard library. Ask what an interviewer asks to find out whether someone writes this language day to day.
+* EXERCISE - a self-contained problem the candidate solves by typing code. Write it the way a coding screen is written: a one-paragraph problem statement, a method signature, one or two worked examples with concrete input and output, and a target time and space complexity. It must be solvable in fifteen minutes by a graduate - an easy or lower-medium LeetCode problem. Never ask for a whole application, a framework, or anything needing a database or network.
+
+DIFFICULTY CONTROLS HOW HARD THE EXERCISE IS, NOT WHETHER YOU SET ONE. At foundation, set an easy exercise - one loop, one map, no clever trick - but still set an exercise.
+
+KEEP CODING QUESTIONS GENERIC. The knowledge base excerpts describe one bank's systems. For coding questions ignore them completely: no client names, no desk jargon, no in-house system names, no trade-lifecycle framing. Plain arrays, strings, maps, lists and trees, worded exactly as a public coding screen would word it.
+
+SCORING A CODING ANSWER
+When the candidate submitted code, judge it the way a coding screen does and fill the four code fields:
+- code_correctness: does it actually work? If not, name the specific input that breaks it. Compiling is not the bar; returning the right answer is.
+- complexity_verdict: one line stating the candidate's time and space complexity against the target you set.
+- edge_cases_missed: only the ones this answer genuinely missed - empty input, null, a single element, duplicates, overflow, an already-sorted input.
+- model_solution: a complete runnable reference solution in a fenced code block in the language asked for, then two or three sentences on why it is written that way. The code goes here and nowhere else - model_answer holds at most two sentences naming the approach and must contain no code block.
+Score correctness first. Code that does not work cannot score above 4 however tidy it reads; working code that hits the target complexity and handles the edge cases is an 8.
+
+On any coding question - concept or exercise - command_walkthrough, minimum_commands and every process_covered flag stay empty or false. That checklist is for support troubleshooting and does not apply here."""
+
+
 INTERVIEW_SYSTEM_TEMPLATE = """You are conducting a mock interview for an FDM consultant \
 preparing for a technology placement at an investment bank.
 
@@ -107,6 +133,8 @@ ROLE BEING INTERVIEWED FOR: {role_label}
 
 DIFFICULTY: {level}
 {level_guidance}
+
+{coding_block}
 
 DIFFICULTY OUTRANKS THE SOURCE MATERIAL. The excerpts may come from a job spec or
 handover written for an experienced hire - one asking for eight years of
@@ -185,11 +213,13 @@ INTERVIEW_QUESTION_SCHEMA = {
         },
         "kind": {
             "type": "string",
-            "enum": ["domain", "technical", "scenario", "competency"],
+            "enum": ["domain", "technical", "scenario", "competency", "coding"],
             "description": (
                 "domain = a concept or piece of jargon; technical = tools, commands, "
                 "SQL, code; scenario = 'here is a situation, what would you do'; "
-                "competency = 'tell me about a time YOU actually did something'. A "
+                "competency = 'tell me about a time YOU actually did something'; "
+                "coding = a self-contained exercise the candidate solves by writing "
+                "code. A "
                 "hypothetical situation is a scenario, never a competency question."
             ),
         },
@@ -197,8 +227,34 @@ INTERVIEW_QUESTION_SCHEMA = {
             "type": "string",
             "description": "Two or three sentences on what a strong answer covers. Not shown until the candidate answers.",
         },
+        "starter_signature": {
+            "type": "string",
+            "description": (
+                "CODING EXERCISE ONLY: the one-line method or function signature to "
+                "implement, in the language asked for, with no body. Empty string for "
+                "every other kind of question."
+            ),
+        },
+        "examples": {
+            "type": "string",
+            "description": (
+                "CODING EXERCISE ONLY: one or two worked examples, one per line, as "
+                "'Input: ... -> Output: ...'. Concrete literal values, never prose. "
+                "Empty string for every other kind of question."
+            ),
+        },
+        "complexity_target": {
+            "type": "string",
+            "description": (
+                "CODING EXERCISE ONLY: the target the solution should hit, e.g. "
+                "'O(n) time, O(n) space'. Empty string for every other kind of question."
+            ),
+        },
     },
-    "required": ["question", "kind", "what_good_looks_like"],
+    "required": [
+        "question", "kind", "what_good_looks_like",
+        "starter_signature", "examples", "complexity_target",
+    ],
     "additionalProperties": False,
 }
 
@@ -327,6 +383,39 @@ INTERVIEW_FEEDBACK_SCHEMA = {
                 "command per entry. EMPTY ARRAY for any non-command-line question."
             ),
         },
+        "code_correctness": {
+            "type": "string",
+            "description": (
+                "CODING ANSWERS ONLY: whether the submitted code actually produces the "
+                "right result. If it does not, name the specific input that breaks it. "
+                "Empty string when the candidate was not asked to write code."
+            ),
+        },
+        "complexity_verdict": {
+            "type": "string",
+            "description": (
+                "CODING ANSWERS ONLY: one line giving the candidate's time and space "
+                "complexity against the target that was set, e.g. 'Yours: O(n^2) time, "
+                "O(1) space. Target: O(n) time, O(n) space.' Empty string otherwise."
+            ),
+        },
+        "edge_cases_missed": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": (
+                "CODING ANSWERS ONLY: edge cases this answer genuinely did not handle - "
+                "empty input, null, single element, duplicates, overflow, already-sorted "
+                "input. Never list one the candidate handled. Empty array otherwise."
+            ),
+        },
+        "model_solution": {
+            "type": "string",
+            "description": (
+                "CODING ANSWERS ONLY: a complete, runnable reference solution in a fenced "
+                "code block in the language asked for, followed by two or three sentences "
+                "on why it is written that way. Empty string otherwise."
+            ),
+        },
         "model_answer": {
             "type": "string",
             "description": (
@@ -342,17 +431,52 @@ INTERVIEW_FEEDBACK_SCHEMA = {
     "required": [
         "score", "verdict", "strengths", "must_know", "good_to_know",
         "advanced_bonus", "process_covered", "command_walkthrough",
-        "minimum_commands", "model_answer", "follow_up_question",
+        "minimum_commands", "code_correctness", "complexity_verdict",
+        "edge_cases_missed", "model_solution", "model_answer", "follow_up_question",
     ],
     "additionalProperties": False,
 }
 
 
-def build_interview_system(role: str, level: str, client: str | None = None) -> str:
+#: Topics that mean "ask me about code". Matched as substrings of the topic the
+#: consultant typed, so "Java collections" and "core java" both count. Decided here
+#: rather than by the model, for the same reason command-line questions are - the
+#: model treated "Java" as a licence to ask about whatever the client's job spec
+#: mentioned, which is how a Java session ended up asking about JDBC resource
+#: handling from a Societe Generale role description.
+CODING_TOPICS = (
+    "java", "python", "javascript", "typescript", "c#", "csharp", "c++", "scala",
+    "kotlin", "golang", "sql", "coding", "code", "program", "algorithm", "leetcode",
+    "data structure", "recursion", "big o", "complexity", "oop", "object oriented",
+    "design pattern", "collections", "concurrency", "multithread", "regex",
+)
+
+
+def is_coding_topic(topic: str | None) -> bool:
+    """Whether this session should be asking about code at all."""
+    if not topic:
+        return False
+    text = topic.lower()
+    return any(hint in text for hint in CODING_TOPICS)
+
+
+def build_interview_system(
+    role: str, level: str, client: str | None = None, topic: str | None = None
+) -> str:
     role_key = role if role in ROLE_BRIEFS else "general"
     level_key = level if level in LEVEL_GUIDANCE else "intermediate"
+    coding = is_coding_topic(topic)
+    coding_block = CODING_GUIDANCE.format(topic=topic) if coding else ""
 
-    if client:
+    if coding:
+        # The consultant chose a coding topic, so questions are standard coding-screen
+        # questions. Naming the client here would pull them back towards the job spec,
+        # which is exactly what makes them stop being coding questions.
+        client_line = (
+            "CLIENT: ignore for coding questions. Even where a client is selected, a "
+            "coding question is framed generically - no bank names, no desk jargon."
+        )
+    elif client:
         client_line = (
             f"CLIENT: {client}. Interview as though hiring for a placement at {client} "
             f"specifically. Where the excerpts name {client}'s systems, processes or "
@@ -373,6 +497,7 @@ def build_interview_system(role: str, level: str, client: str | None = None) -> 
         client_line=client_line,
         level=level_key,
         level_guidance=LEVEL_GUIDANCE[level_key],
+        coding_block=coding_block,
     )
 
 

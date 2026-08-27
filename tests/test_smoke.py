@@ -559,3 +559,168 @@ def test_command_line_questions_are_detected_in_code_not_left_to_the_model():
 
     # the topic field counts too - a terse question with a Linux topic still qualifies
     assert _is_command_line_question("What would you check first?", "Linux")
+
+
+def test_coding_topics_are_recognised():
+    """A 'Java' session was asking concept-recall questions off the client's job
+    spec, because nothing in the pipeline knew the topic meant code."""
+    from app.prompts import is_coding_topic
+
+    for topic in ["Java", "java collections", "Python", "SQL joins", "algorithms",
+                  "LeetCode", "data structures", "OOP", "concurrency", "big O"]:
+        assert is_coding_topic(topic), topic
+
+    for topic in [None, "", "Linux", "trade lifecycle", "settlement", "stakeholders"]:
+        assert not is_coding_topic(topic), topic
+
+
+def test_coding_sessions_alternate_concept_and_exercise():
+    from app.routers.interview import _coding_shape
+
+    assert [_coding_shape(i) for i in range(1, 7)] == [
+        "concept", "exercise", "concept", "exercise", "concept", "exercise",
+    ]
+
+
+def test_coding_questions_never_collect_a_linux_walkthrough():
+    """_COMMAND_HINTS matches bare words like 'process' and 'log', so a Java
+    exercise would otherwise be handed a set of shell commands."""
+    from app.routers.interview import _is_command_line_question
+
+    assert not _is_command_line_question("Write a method to process a log of trades.", "Java")
+    assert not _is_command_line_question("Reverse the words in a string.", "algorithms")
+    # the guard is topic-scoped: a genuine support question is unaffected
+    assert _is_command_line_question("Which log would you check?", "Linux")
+
+
+def test_coding_prompt_replaces_client_framing_and_drops_retrieval():
+    from app.prompts import build_interview_system
+
+    system = build_interview_system("developer", "foundation", "Societe Generale", "Java")
+    assert "CODING PRACTICE IS ACTIVE" in system
+    assert "practise: Java" in system
+    # "fully generic" - naming the client is what pulled questions back to the job spec
+    assert "Societe Generale" not in system
+    # foundation must still set an exercise, just an easy one
+    assert "NOT WHETHER YOU SET ONE" in system
+
+    plain = build_interview_system("developer", "foundation", "Societe Generale", "trade lifecycle")
+    assert "CODING PRACTICE" not in plain
+    assert "Societe Generale" in plain
+
+
+def test_coding_exercise_folds_signature_and_examples_into_the_question():
+    """The extras are separate schema fields so the model must produce them, but
+    only the question string is persisted - so they are folded in."""
+    from app.routers.interview import _format_exercise
+
+    text = _format_exercise({
+        "question": "Return the first value that appears twice.",
+        "starter_signature": "String firstDuplicate(List<String> ids)",
+        "examples": "Input: [a, b, a] -> Output: a",
+        "complexity_target": "O(n) time, O(n) space",
+    })
+    assert "Return the first value that appears twice." in text
+    assert "**Signature**" in text and "String firstDuplicate(List<String> ids)" in text
+    assert "**Examples**" in text and "Input: [a, b, a] -> Output: a" in text
+    assert "**Target** O(n) time, O(n) space" in text
+    assert text.count("```") == 4  # signature and examples each fenced
+
+    # a concept question leaves the three fields empty and must stay a plain question
+    concept = _format_exercise({
+        "question": "Why override hashCode when you override equals?",
+        "starter_signature": "", "examples": "", "complexity_target": "",
+    })
+    assert concept == "Why override hashCode when you override equals?"
+    assert "```" not in concept
+
+
+def test_verdict_is_derived_from_the_score_not_trusted_from_the_model():
+    """A live run scored an O(n^2) two-sum answer 5 and labelled it 'strong',
+    contradicting the bands in its own schema. The label is computed instead."""
+    from app.routers.interview import _verdict_for
+
+    assert [_verdict_for(s) for s in range(0, 11)] == [
+        "needs_work", "needs_work", "needs_work", "needs_work", "needs_work",
+        "needs_work", "on_track", "on_track", "strong", "strong", "strong",
+    ]
+
+
+def test_reference_code_is_recovered_when_the_model_uses_the_wrong_field():
+    """model_answer and model_solution both ask for 'the good answer', so on a
+    coding question the model fills one or the other - a live run put the whole
+    Java solution in model_answer and left model_solution empty."""
+    from app.routers.interview import _split_code_answer
+
+    misfiled = {"model_answer": "Use a hash map.\n```java\nMap<Integer,Integer> m;\n```",
+                "model_solution": ""}
+    _split_code_answer(misfiled)
+    assert "```java" in misfiled["model_solution"]
+    assert misfiled["model_answer"] == ""
+
+    # a correctly filled response is left alone
+    correct = {"model_answer": "Use a hash map.", "model_solution": "```java\nx\n```"}
+    _split_code_answer(correct)
+    assert correct["model_answer"] == "Use a hash map."
+    assert correct["model_solution"] == "```java\nx\n```"
+
+    # prose with no code block is not a solution and must stay put
+    prose = {"model_answer": "Equal objects must share a bucket.", "model_solution": ""}
+    _split_code_answer(prose)
+    assert prose["model_solution"] == ""
+    assert prose["model_answer"] == "Equal objects must share a bucket."
+
+
+def test_export_renders_code_review_and_omits_it_otherwise():
+    import json as _json
+
+    from app.routers.interview import _session_markdown
+
+    empty_process = {k: False for k in ("identify_impact", "investigate",
+                                        "isolate_root_cause", "remediate_safely",
+                                        "verify", "communicate")}
+    session = {"role_focus": "developer", "level": "foundation", "topic": "Java",
+               "client_focus": None, "created_at": "2026-08-26T09:00:00"}
+    coding_turn = {
+        "ordinal": 1, "question": "Return the first duplicate.", "question_kind": "coding",
+        "answer": "nested for loops", "score": 5,
+        "feedback": _json.dumps({
+            "verdict": "needs_work", "strengths": ["Correct output"],
+            "must_know": [], "good_to_know": [], "advanced_bonus": [],
+            "process_covered": empty_process,
+            "command_walkthrough": [], "minimum_commands": [],
+            "code_correctness": "Works, but returns null for an empty list.",
+            "complexity_verdict": "Yours: O(n^2) time, O(1) space. Target: O(n) time, O(n) space.",
+            "edge_cases_missed": ["empty list", "null input"],
+            "model_solution": "```java\nSet<String> seen = new HashSet<>();\n```",
+            "model_answer": "Use a HashSet.",
+            "follow_up_question": "What if the list does not fit in memory?",
+        }),
+    }
+    concept_turn = {
+        "ordinal": 2, "question": "Why override hashCode?", "question_kind": "technical",
+        "answer": "So hash lookups work.", "score": 7,
+        "feedback": _json.dumps({
+            "verdict": "on_track", "strengths": ["Correct"], "must_know": [],
+            "good_to_know": [], "advanced_bonus": [], "process_covered": empty_process,
+            "command_walkthrough": [], "minimum_commands": [],
+            "code_correctness": "", "complexity_verdict": "",
+            "edge_cases_missed": [], "model_solution": "",
+            "model_answer": "Equal objects must share a hash bucket.",
+            "follow_up_question": "What breaks if you do not?",
+        }),
+    }
+
+    md = _session_markdown(session, [coding_turn, concept_turn])
+
+    assert "**Does it work?** Works, but returns null for an empty list." in md
+    assert "Yours: O(n^2) time" in md
+    assert "**Edge cases missed**" in md and "- empty list" in md
+    assert "Reference solution" in md and "Set<String> seen" in md
+    # the concept turn contributes none of those headings
+    assert md.count("Reference solution") == 1
+    assert md.count("Edge cases missed") == 1
+    assert md.count("Does it work?") == 1
+    # and a coding session never emits the support troubleshooting block
+    assert "Troubleshooting order" not in md
+    assert "Commands a strong junior would use" not in md

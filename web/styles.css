@@ -394,6 +394,22 @@ input[type=file] { padding: 6px; font-size: 13px; }
 .cmd-step pre { margin: 4px 0 0; }
 .fb-minimum { border-left: 3px solid var(--accent); padding-left: 12px; }
 .fb-minimum pre { margin: 0; }
+
+/* Coding exercises. The question card carries a fenced signature and examples,
+   so it needs the same block spacing the feedback markdown gets; the answer box
+   becomes a monospace editor because what goes in it is code, not prose. */
+.qcard-coding .qtext p { margin: 0 0 10px; }
+.qcard-coding .qtext strong { font-size: 11px; text-transform: uppercase; letter-spacing: .6px; color: var(--text-faint); }
+.qcard-coding .qtext pre { margin: 4px 0 12px; }
+.qcard-coding .qtext > :last-child { margin-bottom: 0; }
+.answer-code {
+  font-family: var(--mono); font-size: 13px; line-height: 1.5;
+  min-height: 260px; tab-size: 2; white-space: pre;
+}
+.fb-code { border-left: 3px solid var(--good); padding-left: 12px; }
+.fb-code p { margin: 0 0 6px; font-size: 14px; }
+.fb-code strong { color: var(--text); }
+.fb-code ul { margin: 0 0 6px; }
 #downloadInterviewBtn { margin-top: 8px; }
 .fb-section li { margin-bottom: 3px; }
 

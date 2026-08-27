@@ -16,6 +16,7 @@ from ..prompts import (
     TROUBLESHOOTING_STEPS,
     build_interview_system,
     format_context,
+    is_coding_topic,
 )
 from ..retrieval import search as retrieval
 from ..schemas import (
@@ -39,10 +40,78 @@ _COMMAND_HINTS = (
     "crontab", "autosys", "control-m", "port", "network",
 )
 
+#: Markdown assembly for coding exercises, kept as names so the question builder
+#: below reads as prose rather than as escape sequences.
+_BLANK = "\n\n"
+
+
+def _fence(body: str) -> str:
+    return "```\n" + body + "\n```"
+
 
 def _is_command_line_question(question: str, topic: str | None) -> bool:
+    # A coding session is never a command-line session. Without this guard a Java
+    # exercise mentioning a "process" or a "log file" collects a Linux walkthrough
+    # it has no use for - _COMMAND_HINTS matches on those words alone.
+    if is_coding_topic(topic):
+        return False
     text = f"{question} {topic or ''}".lower()
     return any(hint in text for hint in _COMMAND_HINTS)
+
+
+#: Score bands, copied from INTERVIEW_FEEDBACK_SCHEMA. The model is told these and
+#: still contradicts them - a live run scored an O(n^2) answer 5 and labelled it
+#: "strong" - so the label is derived here instead of trusted.
+def _verdict_for(score: int) -> str:
+    if score <= 5:
+        return "needs_work"
+    return "on_track" if score <= 7 else "strong"
+
+
+def _split_code_answer(feedback: dict[str, Any]) -> None:
+    """Move a fenced solution out of model_answer when the model put it there.
+
+    model_answer and model_solution both ask for "the good answer", so on a coding
+    question the model fills one or the other. Rather than lose the reference
+    solution, take whichever arrived.
+    """
+    if (feedback.get("model_solution") or "").strip():
+        return
+    answer = (feedback.get("model_answer") or "").strip()
+    if "```" in answer:
+        feedback["model_solution"] = answer
+        feedback["model_answer"] = ""
+
+
+def _coding_shape(ordinal: int) -> str:
+    """Concept, exercise, concept, exercise...
+
+    Fixed here rather than left to the model, for the same reason the command-line
+    trigger is: asked to "focus on Java" it will drift to whatever the retrieved
+    job spec mentions and never set an exercise at all.
+    """
+    return "exercise" if ordinal % 2 == 0 else "concept"
+
+
+def _format_exercise(result: dict[str, Any]) -> str:
+    """Fold the structured exercise fields into the question text.
+
+    Signature, examples and target come back as separate fields so the schema can
+    force them to exist, but only the question string is stored, reloaded and
+    exported - so they are folded into it as Markdown rather than becoming three
+    more columns on interview_turns.
+    """
+    parts = [result["question"].strip()]
+    signature = (result.get("starter_signature") or "").strip()
+    examples = (result.get("examples") or "").strip()
+    target = (result.get("complexity_target") or "").strip()
+    if signature:
+        parts.append("**Signature**" + _BLANK + _fence(signature))
+    if examples:
+        parts.append("**Examples**" + _BLANK + _fence(examples))
+    if target:
+        parts.append(f"**Target** {target}")
+    return _BLANK.join(parts)
 
 
 TOPIC_SEEDS = {
@@ -95,6 +164,13 @@ def _retrieve(session: dict[str, Any], extra: str = "") -> list:
     get HSBC material, but an empty question list helps nobody, so each filter is
     dropped in turn rather than returning nothing.
     """
+    # Coding sessions are deliberately ungrounded. The excerpts are handover decks
+    # and job specs; retrieving them for a Java session is what produced a JDBC
+    # resource-handling question anchored to a Societe Generale role description,
+    # and citing them under a LeetCode exercise would be noise.
+    if is_coding_topic(session.get("topic")):
+        return []
+
     role = session["role_focus"]
     client = session.get("client_focus") or None
     query = " ".join(
@@ -137,24 +213,63 @@ def _insert_turn(session_id: str, ordinal: int, question: str, kind: str) -> int
         )
 
 
+_CONCEPT_DIRECTIVE = (
+    "ASK A CONCEPT QUESTION this turn. One language or platform question, answered "
+    "in words, no code to write. Leave starter_signature, examples and "
+    "complexity_target as empty strings. Set kind to 'technical'."
+)
+
+_EXERCISE_DIRECTIVE = (
+    "ASK A CODING EXERCISE this turn. Set kind to 'coding'. The question field holds "
+    "the problem statement only - one short paragraph, generic, no bank or client "
+    "framing. starter_signature MUST hold the one-line signature to implement, "
+    "examples MUST hold one or two 'Input: ... -> Output: ...' lines with literal "
+    "values, and complexity_target MUST hold the target, e.g. 'O(n) time, O(n) space'. "
+    "None of those three may be empty."
+)
+
+
 async def _generate_question(session: dict[str, Any], turns: list[dict[str, Any]]) -> dict[str, Any]:
     hits = _retrieve(session, extra=turns[-1]["question"] if turns else "")
+    topic = session.get("topic")
+    coding = is_coding_topic(topic)
     topic_line = (
-        f"The consultant asked to focus on: {session['topic']}." if session.get("topic") else
+        f"The consultant asked to focus on: {topic}." if topic else
         "No specific topic requested - cover the ground a real interview would."
     )
     asked = "\n".join(f"- {t['question']}" for t in turns) or "(none yet)"
 
+    if coding:
+        shape = _coding_shape(len(turns) + 1)
+        context = (
+            "NO KNOWLEDGE BASE FOR THIS QUESTION - a coding topic was requested, so "
+            "the question is a standard one asked from general knowledge. Do not "
+            "mention handover decks or missing material."
+        )
+        directive = _EXERCISE_DIRECTIVE if shape == "exercise" else _CONCEPT_DIRECTIVE
+    else:
+        context = format_context(hits)
+        directive = (
+            "This is not a coding session. Leave starter_signature, examples and "
+            "complexity_target as empty strings."
+        )
+
     user_turn = (
-        f"{format_context(hits)}\n\n---\n\n{_transcript(turns)}\n\n"
+        f"{context}\n\n---\n\n{_transcript(turns)}\n\n"
         f"{topic_line}\n\nQuestions already asked (do not repeat or lightly reword these):\n{asked}\n\n"
+        f"{directive}\n\n"
         "Ask the next question."
     )
     result = await _guarded(llm.structured(
-        build_interview_system(session["role_focus"], session["level"], session.get("client_focus")),
+        build_interview_system(
+            session["role_focus"], session["level"], session.get("client_focus"), topic
+        ),
         [{"role": "user", "content": user_turn}],
         INTERVIEW_QUESTION_SCHEMA,
     ))
+    if coding and _coding_shape(len(turns) + 1) == "exercise":
+        result["question"] = _format_exercise(result)
+        result["kind"] = "coding"
     result["citations"] = [hit.as_citation(i) for i, hit in enumerate(hits, start=1)]
     return result
 
@@ -205,18 +320,47 @@ async def answer_question(request: InterviewAnswerRequest) -> InterviewFeedbackO
         else "THIS IS NOT A COMMAND-LINE QUESTION. Return empty arrays for both "
              "command_walkthrough and minimum_commands."
     )
+    # Whether code was asked for is a fact about the stored turn, not a judgement
+    # call - the same reason the command-line trigger moved into the router.
+    code_directive = (
+        "THE CANDIDATE WAS ASKED TO WRITE CODE. Review it as a coding screen does: "
+        "code_correctness MUST say whether it actually returns the right answer and "
+        "name the input that breaks it if not, complexity_verdict MUST compare their "
+        "complexity with the target, edge_cases_missed MUST list only cases they "
+        "genuinely missed, and model_solution MUST contain a complete runnable "
+        "solution in a fenced code block. The reference code goes in model_solution "
+        "and NOWHERE ELSE - model_answer holds at most two sentences naming the "
+        "approach, with no code block in it. Correctness outranks style: code that "
+        "does not work cannot score above 4. Leave process_covered all false."
+        if current.get("question_kind") == "coding"
+        else "THIS IS NOT A CODING EXERCISE. Return empty strings for "
+             "code_correctness, complexity_verdict and model_solution, and an empty "
+             "array for edge_cases_missed."
+    )
+    context = (
+        "NO KNOWLEDGE BASE FOR THIS QUESTION - a coding topic was requested. Assess "
+        "from general knowledge and do not mention handover decks."
+        if is_coding_topic(session.get("topic")) else format_context(hits)
+    )
     user_turn = (
-        f"{format_context(hits)}\n\n---\n\n{_transcript(prior)}\n\n"
+        f"{context}\n\n---\n\n{_transcript(prior)}\n\n"
         f"QUESTION YOU ASKED: {current['question']}\n\n"
         f"CANDIDATE'S ANSWER: {request.answer}\n\n"
-        f"{command_directive}\n\n"
+        f"{command_directive}\n\n{code_directive}\n\n"
         "Assess this answer."
     )
     feedback = await _guarded(llm.structured(
-        build_interview_system(session["role_focus"], session["level"], session.get("client_focus")),
+        build_interview_system(
+            session["role_focus"], session["level"], session.get("client_focus"),
+            session.get("topic"),
+        ),
         [{"role": "user", "content": user_turn}],
         INTERVIEW_FEEDBACK_SCHEMA,
     ))
+
+    feedback["verdict"] = _verdict_for(int(feedback["score"]))
+    if current.get("question_kind") == "coding":
+        _split_code_answer(feedback)
 
     citations = [hit.as_citation(i) for i, hit in enumerate(hits, start=1)]
     stored = dict(feedback)
@@ -238,6 +382,10 @@ async def answer_question(request: InterviewAnswerRequest) -> InterviewFeedbackO
         process_covered=feedback.get("process_covered", {}) or {},
         command_walkthrough=feedback.get("command_walkthrough", []) or [],
         minimum_commands=feedback.get("minimum_commands", []) or [],
+        code_correctness=feedback.get("code_correctness", "") or "",
+        complexity_verdict=feedback.get("complexity_verdict", "") or "",
+        edge_cases_missed=feedback.get("edge_cases_missed", []) or [],
+        model_solution=feedback.get("model_solution", "") or "",
         model_answer=feedback.get("model_answer", ""),
         follow_up_question=feedback.get("follow_up_question", ""),
         citations=citations,
@@ -383,6 +531,27 @@ def _feedback_markdown(turn: dict[str, Any]) -> list[str]:
         lines.append("```bash")
         lines.extend(str(c).strip() for c in minimum)
         lines.append("```")
+        lines.append("")
+
+    for heading, key in (
+        ("Does it work?", "code_correctness"),
+        ("Complexity", "complexity_verdict"),
+    ):
+        value = (stored.get(key) or "").strip()
+        if value:
+            lines.append(f"**{heading}** {value}")
+            lines.append("")
+
+    edge_cases = stored.get("edge_cases_missed") or []
+    if edge_cases:
+        lines.append("**Edge cases missed**")
+        lines.extend(f"- {case}" for case in edge_cases)
+        lines.append("")
+
+    if stored.get("model_solution"):
+        lines.append("**Reference solution**")
+        lines.append("")
+        lines.append(stored["model_solution"])
         lines.append("")
 
     if stored.get("model_answer"):

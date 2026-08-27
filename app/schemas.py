@@ -107,6 +107,11 @@ class InterviewFeedbackOut(BaseModel):
     # Populated only for command-line questions; empty for domain/competency ones.
     command_walkthrough: list[dict[str, str]] = Field(default_factory=list)
     minimum_commands: list[str] = Field(default_factory=list)
+    # Populated only when the question was a coding exercise; empty otherwise.
+    code_correctness: str = ""
+    complexity_verdict: str = ""
+    edge_cases_missed: list[str] = Field(default_factory=list)
+    model_solution: str = ""
     model_answer: str
     follow_up_question: str
     citations: list[dict[str, Any]] = Field(default_factory=list)
