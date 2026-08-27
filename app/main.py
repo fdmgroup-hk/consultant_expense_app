@@ -185,9 +185,28 @@ def healthz() -> JSONResponse:
     return JSONResponse(content={"status": "ok", "database": db.dialect()})
 
 
+#: Neither FileResponse nor StaticFiles sends Cache-Control, and with only an
+#: ETag to go on a browser is free to apply heuristic caching - serving a stale
+#: page for hours without revalidating. A deploy that added new form fields
+#: therefore reached the server but not the tab that was already open.
+#:
+#: "no-cache" does not mean "do not store": it means "revalidate before use", so
+#: the ETag still turns an unchanged file into a cheap 304.
+_REVALIDATE = {"Cache-Control": "no-cache"}
+
+
+class _RevalidatingStatics(StaticFiles):
+    """StaticFiles that asks the browser to check before reusing a file."""
+
+    def file_response(self, *args, **kwargs) -> Response:
+        response = super().file_response(*args, **kwargs)
+        response.headers.update(_REVALIDATE)
+        return response
+
+
 if WEB_DIR.exists():
-    app.mount("/static", StaticFiles(directory=WEB_DIR), name="static")
+    app.mount("/static", _RevalidatingStatics(directory=WEB_DIR), name="static")
 
     @app.get("/", include_in_schema=False)
     def index() -> FileResponse:
-        return FileResponse(WEB_DIR / "index.html")
+        return FileResponse(WEB_DIR / "index.html", headers=_REVALIDATE)

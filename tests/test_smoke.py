@@ -467,6 +467,34 @@ def test_feedback_schema_separates_gaps_by_seniority():
         assert tool in advanced, tool
 
 
+def test_page_and_assets_ask_the_browser_to_revalidate(client):
+    """A deploy adding new form fields reached the server but not an open tab:
+    nothing sent Cache-Control, so the browser cached the page heuristically."""
+    page = client.get("/")
+    assert page.headers.get("cache-control") == "no-cache"
+
+    for asset in ("/static/app.js", "/static/styles.css"):
+        response = client.get(asset)
+        assert response.status_code == 200, asset
+        assert response.headers.get("cache-control") == "no-cache", asset
+        # "no-cache" is revalidate-before-use, not don't-store: the ETag must
+        # still short-circuit an unchanged file.
+        etag = response.headers.get("etag")
+        assert etag, asset
+        assert client.get(asset, headers={"If-None-Match": etag}).status_code == 304, asset
+
+
+def test_new_roles_and_department_reach_the_browser(client):
+    """The controls exist server-side; this pins them to what is actually served."""
+    html = client.get("/").text
+
+    for role in ("business_analyst_tech", "business_analyst_non_tech"):
+        # chat filter, interview picker and upload form all offer it
+        assert html.count(f'value="{role}"') == 3, role
+    for control in ("chatDepartment", "ivDepartment", "upDepartment"):
+        assert control in html, control
+
+
 def test_chat_prompt_forbids_naming_tools_absent_from_the_excerpts():
     """A BA question produced a "Tools (from the decks)" table listing Jira,
     Confluence, Visio and Figma, then volunteered React, Angular and Camunda -
