@@ -6,10 +6,15 @@ candidate's answer) goes into the messages, never in here.
 """
 from __future__ import annotations
 
+#: "business_analyst" predates the technical/non-technical split and is kept so
+#: material already tagged with it stays reachable; the two specific values are
+#: what new uploads and new practice sessions should use.
 ROLE_LABELS = {
     "developer": "Developer",
     "production_support": "Production Support",
     "business_analyst": "Business Analyst",
+    "business_analyst_tech": "Business Analyst (technical)",
+    "business_analyst_non_tech": "Business Analyst (non-technical)",
     "general": "General",
 }
 
@@ -33,6 +38,26 @@ ROLE_BRIEFS = {
         "on requirements gathering, user stories and acceptance criteria, stakeholder "
         "management, process mapping, UAT, data analysis in SQL/Excel, and genuine "
         "domain knowledge of the trade lifecycle, settlement and regulatory reporting."
+    ),
+    "business_analyst_tech": (
+        "Technical business analyst sitting between the business and engineering on a "
+        "bank technology team. Everything a business analyst does, plus hands-on "
+        "technical work: reading and writing SQL against the application database, "
+        "reading API contracts and message payloads (JSON, XML, FIX), tracing a record "
+        "through the systems it touches, specifying interfaces and data mappings, and "
+        "working defects with developers. Expect real technical questions - joins and "
+        "aggregation in SQL, what a REST call looks like, how two systems reconcile - "
+        "alongside the requirements and stakeholder ground."
+    ),
+    "business_analyst_non_tech": (
+        "Business analyst working on process and change rather than systems internals. "
+        "Requirements elicitation and workshops, process mapping and target operating "
+        "models, user stories and acceptance criteria, stakeholder management across "
+        "front and back office, UAT coordination and sign-off, and analysis in Excel. "
+        "Do NOT ask this candidate to write SQL, read an API payload or reason about "
+        "system architecture - probe business judgement, clarity of communication and "
+        "domain understanding of the trade lifecycle, settlement and regulatory "
+        "reporting instead."
     ),
     "general": (
         "Graduate consultant about to start a placement on a bank technology team. "
@@ -65,30 +90,48 @@ LEVEL_GUIDANCE = {
 CHAT_SYSTEM = """You are Consultant Experience, an interview-preparation coach for FDM consultants \
 preparing for technology placements at investment banks.
 
-Your knowledge comes from two places:
-1. KNOWLEDGE BASE excerpts supplied with each question. These are drawn from handover \
-decks and write-ups by returning consultants who actually did these placements.
-2. Your own general knowledge of capital markets technology.
+THE KNOWLEDGE BASE EXCERPTS ARE YOUR ONLY SOURCE. They are drawn from handover decks \
+and write-ups by returning consultants who actually did these placements. A consultant \
+reads your answer to find out what a specific placement is really like, so anything you \
+add from general knowledge is worse than useless - it is indistinguishable from lived \
+experience and they will repeat it in an interview.
 
-Rules for using them:
-- Prefer the knowledge base. When an excerpt answers the question, use it and cite it \
-inline as [1], [2] matching the numbered excerpts. Cite the specific excerpt that carries \
-the claim, not every excerpt you were given.
-- Clearly separate the two sources. When you go beyond the excerpts, say so in passing \
-("the decks don't cover this, but generally...") so the consultant knows which parts are \
-lived experience from a previous placement and which are background knowledge.
-- Never invent a citation, a consultant's name, a client name, or a detail about what \
-happened on someone's placement. If the knowledge base is empty or off-topic, say what \
-you can from general knowledge and note the gap.
+Hard rules. These are not preferences:
+- EVERY factual claim about a placement - what someone does, which team they sit on, \
+what a process involves - must come from an excerpt and carry its citation, inline as \
+[1], [2] matching the numbered excerpts. Cite the excerpt that carries the claim, not \
+every excerpt you were given.
+- NEVER NAME A TECHNOLOGY, PRODUCT, VENDOR OR TOOL THAT DOES NOT APPEAR IN AN EXCERPT. \
+Not Jira, not Confluence, not React, not Angular, not Spring Boot, not Camunda, not \
+Pega, not Figma, not Visio - not any of them, however certain you are that a bank of \
+this kind uses one. If the excerpts do not name the tool, the honest answer is that the \
+material does not say.
+- NEVER INVENT STRUCTURE THE EXCERPTS DO NOT CONTAIN. No timetables, no "a typical day" \
+broken into morning/afternoon, no worked example of a day's work, no invented sequence \
+of meetings - unless an excerpt actually describes one. A plausible schedule assembled \
+from nothing is a fabrication even when every individual activity sounds reasonable.
+- NEVER LABEL YOUR OWN KNOWLEDGE AS THE DECKS'. A heading or table column that says \
+"from the decks", "tools used" or similar may contain ONLY cited material. Do not put \
+an uncited row in a cited table.
+- Never invent a citation, a consultant's name, a client name, a department, or a detail \
+about what happened on someone's placement.
 - When excerpts disagree, surface the disagreement rather than picking one silently. \
 Different desks genuinely do things differently.
+
+WHEN THE EXCERPTS DO NOT COVER THE QUESTION, SAY SO AND STOP. "The material does not \
+cover the technical stack - it is written from the business analyst's side and names no \
+languages or frameworks" is a good answer. Padding that gap with what banks typically \
+use is not. You may add at most two sentences of general background, only if it genuinely \
+helps, only at the very end, and only under a final line beginning "Beyond the material:" \
+- never woven into the body, never in a table, never cited.
 
 How to answer:
 - Write for a bright graduate who may be new to finance. Expand an acronym the first \
 time it appears in your answer.
 - Be concrete. Prefer a worked example over an abstract definition: walk a trade through \
 the step, name the system, describe what actually breaks.
-- Keep answers tight - a few short paragraphs or a compact list. Depth over padding.
+- Keep answers tight - a few short paragraphs or a compact list. Depth over padding. A \
+short answer that stops where the material stops beats a long one that fills the gap.
 - End with one short follow-up question that pushes the consultant's understanding \
 forward, on a line starting with "Next:". Make it specific to what you just explained, \
 not a generic "any questions?".
@@ -461,7 +504,8 @@ def is_coding_topic(topic: str | None) -> bool:
 
 
 def build_interview_system(
-    role: str, level: str, client: str | None = None, topic: str | None = None
+    role: str, level: str, client: str | None = None, topic: str | None = None,
+    department: str | None = None,
 ) -> str:
     role_key = role if role in ROLE_BRIEFS else "general"
     level_key = level if level in LEVEL_GUIDANCE else "intermediate"
@@ -491,6 +535,14 @@ def build_interview_system(
             "not assume a particular bank's systems or naming."
         )
 
+    if department and not coding:
+        client_line += (
+            f"\n\nDEPARTMENT: {department}. The consultant is preparing for this "
+            f"department specifically, so favour what {department} actually deals with "
+            "where the excerpts show it. Do not invent departmental detail the excerpts "
+            "do not support."
+        )
+
     return INTERVIEW_SYSTEM_TEMPLATE.format(
         role_label=ROLE_LABELS[role_key],
         role_brief=ROLE_BRIEFS[role_key],
@@ -506,7 +558,9 @@ def format_context(hits: list) -> str:
     if not hits:
         return (
             "KNOWLEDGE BASE: empty for this question - no consultant material matched. "
-            "Answer from general knowledge and say that the decks don't cover it."
+            "Say plainly that the material does not cover this and stop. Do not "
+            "substitute general knowledge for it, and do not name any tool, technology "
+            "or vendor."
         )
     blocks = ["KNOWLEDGE BASE EXCERPTS", ""]
     for index, hit in enumerate(hits, start=1):
@@ -515,6 +569,8 @@ def format_context(hits: list) -> str:
             origin.append(hit.locator)
         if hit.client:
             origin.append(f"client: {hit.client}")
+        if getattr(hit, "department", None):
+            origin.append(f"department: {hit.department}")
         if hit.role:
             origin.append(f"role: {ROLE_LABELS.get(hit.role, hit.role)}")
         if hit.placement_period:

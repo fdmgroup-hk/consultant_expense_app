@@ -118,6 +118,8 @@ TOPIC_SEEDS = {
     "developer": "developer responsibilities technical stack build deploy trade systems",
     "production_support": "production support incident triage escalation batch monitoring outage",
     "business_analyst": "business analyst requirements stakeholders UAT process trade lifecycle",
+    "business_analyst_tech": "business analyst SQL data mapping interface API defect testing requirements",
+    "business_analyst_non_tech": "business analyst requirements workshops process mapping stakeholders UAT operating model",
     "general": "trade lifecycle order flow technology role responsibilities investment bank",
 }
 
@@ -173,15 +175,17 @@ def _retrieve(session: dict[str, Any], extra: str = "") -> list:
 
     role = session["role_focus"]
     client = session.get("client_focus") or None
+    department = session.get("department_focus") or None
     query = " ".join(
         part for part in [session.get("topic") or "", extra, TOPIC_SEEDS.get(role, "")] if part
     )
     role_filter = role if role != "general" else None
 
     for attempt in (
-        {"role": role_filter, "client": client},
-        {"role": role_filter, "client": None},
-        {"role": None, "client": None},
+        {"role": role_filter, "client": client, "department": department},
+        {"role": role_filter, "client": client, "department": None},
+        {"role": role_filter, "client": None, "department": None},
+        {"role": None, "client": None, "department": None},
     ):
         hits = retrieval.search(query, **attempt)
         if hits:
@@ -262,7 +266,8 @@ async def _generate_question(session: dict[str, Any], turns: list[dict[str, Any]
     )
     result = await _guarded(llm.structured(
         build_interview_system(
-            session["role_focus"], session["level"], session.get("client_focus"), topic
+            session["role_focus"], session["level"], session.get("client_focus"), topic,
+            session.get("department_focus"),
         ),
         [{"role": "user", "content": user_turn}],
         INTERVIEW_QUESTION_SCHEMA,
@@ -280,10 +285,12 @@ async def start_interview(request: InterviewStartRequest) -> InterviewQuestionOu
     session_id = str(uuid.uuid4())
     with db.connection() as conn:
         conn.execute(
-            "INSERT INTO interview_sessions (id, role_focus, level, topic, client_focus) "
-            "VALUES (?, ?, ?, ?, ?)",
+            "INSERT INTO interview_sessions "
+            "(id, role_focus, level, topic, client_focus, department_focus) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
             (session_id, request.role, request.level, request.topic,
-             (request.client or "").strip() or None),
+             (request.client or "").strip() or None,
+             (request.department or "").strip() or None),
         )
     session = _load_session(session_id)
 
@@ -352,7 +359,7 @@ async def answer_question(request: InterviewAnswerRequest) -> InterviewFeedbackO
     feedback = await _guarded(llm.structured(
         build_interview_system(
             session["role_focus"], session["level"], session.get("client_focus"),
-            session.get("topic"),
+            session.get("topic"), session.get("department_focus"),
         ),
         [{"role": "user", "content": user_turn}],
         INTERVIEW_FEEDBACK_SCHEMA,
@@ -461,6 +468,7 @@ def interview_summary(session_id: str) -> InterviewSummaryOut:
         level=session["level"],
         topic=session["topic"],
         client=session.get("client_focus"),
+        department=session.get("department_focus"),
         answered=len(scored),
         average_score=round(sum(scored) / len(scored), 1) if scored else None,
         turns=[
@@ -571,6 +579,8 @@ def _session_markdown(session: dict[str, Any], turns: list[dict[str, Any]]) -> s
     facts = [f"**Level:** {session['level']}"]
     if session.get("client_focus"):
         facts.append(f"**Client:** {session['client_focus']}")
+    if session.get("department_focus"):
+        facts.append(f"**Department:** {session['department_focus']}")
     if session.get("topic"):
         facts.append(f"**Topic:** {session['topic']}")
     facts.append(f"**Answered:** {len(scored)} of {len(turns)}")

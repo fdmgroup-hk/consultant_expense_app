@@ -41,6 +41,7 @@ _MEDIA_TYPES = {
 def list_documents(
     role: str | None = Query(default=None),
     client: str | None = Query(default=None),
+    department: str | None = Query(default=None),
 ) -> list[DocumentOut]:
     sql = "SELECT * FROM documents"
     clauses: list[str] = []
@@ -51,6 +52,9 @@ def list_documents(
     if client:
         clauses.append("client = ?")
         params.append(client)
+    if department:
+        clauses.append("department = ?")
+        params.append(department)
     if clauses:
         sql += " WHERE " + " AND ".join(clauses)
     sql += " ORDER BY created_at DESC, title"
@@ -66,6 +70,7 @@ def upload_document(
     title: str = Form(default=""),
     consultant: str = Form(default=""),
     client: str = Form(default=""),
+    department: str = Form(default=""),
     role: str = Form(default="general"),
     placement_period: str = Form(default=""),
     tags: str = Form(default=""),
@@ -102,6 +107,7 @@ def upload_document(
                 title=title.strip() or Path(original_name).stem.replace("_", " ").replace("-", " "),
                 consultant=consultant.strip() or None,
                 client=client.strip() or None,
+                department=department.strip() or None,
                 role=role.strip() or "general",
                 placement_period=placement_period.strip() or None,
                 tags=[t.strip() for t in tags.split(",") if t.strip()],
@@ -188,8 +194,9 @@ def search_knowledge_base(
     top_k: int = Query(default=10, ge=1, le=50),
     role: str | None = Query(default=None),
     client: str | None = Query(default=None),
+    department: str | None = Query(default=None),
 ) -> list[SearchHitOut]:
-    hits = retrieval.search(q, top_k=top_k, role=role, client=client)
+    hits = retrieval.search(q, top_k=top_k, role=role, client=client, department=department)
     return [
         SearchHitOut(
             chunk_id=hit.chunk_id,
@@ -199,6 +206,7 @@ def search_knowledge_base(
             heading=hit.heading,
             text=hit.text,
             client=hit.client,
+            department=hit.department,
             role=hit.role,
             consultant=hit.consultant,
             score=hit.score,

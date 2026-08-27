@@ -42,7 +42,9 @@
             <option value="">All roles</option>
             <option value="developer">Developer</option>
             <option value="production_support">Production Support</option>
-            <option value="business_analyst">Business Analyst</option>
+            <option value="business_analyst">Business Analyst (any)</option>
+            <option value="business_analyst_tech">Business Analyst (technical)</option>
+            <option value="business_analyst_non_tech">Business Analyst (non-technical)</option>
             <option value="general">General</option>
           </select>
         </div>
@@ -50,6 +52,11 @@
         <div class="field">
           <label for="chatClient">Focus on a client</label>
           <select id="chatClient"><option value="">All clients</option></select>
+        </div>
+
+        <div class="field">
+          <label for="chatDepartment">Focus on a department</label>
+          <select id="chatDepartment"><option value="">All departments</option></select>
         </div>
 
         <label class="checkline">
@@ -90,7 +97,9 @@
           <select id="ivRole">
             <option value="developer">Developer</option>
             <option value="production_support">Production Support</option>
-            <option value="business_analyst">Business Analyst</option>
+            <option value="business_analyst">Business Analyst (any)</option>
+            <option value="business_analyst_tech">Business Analyst (technical)</option>
+            <option value="business_analyst_non_tech">Business Analyst (non-technical)</option>
             <option value="general">General / not decided</option>
           </select>
         </div>
@@ -98,6 +107,12 @@
           <label for="ivClient">Client (optional)</label>
           <select id="ivClient">
             <option value="">Any client — generic questions</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="ivDepartment">Department (optional)</label>
+          <select id="ivDepartment">
+            <option value="">Any department</option>
           </select>
         </div>
         <div class="field">
@@ -154,12 +169,18 @@
               <option value="general">General</option>
               <option value="developer">Developer</option>
               <option value="production_support">Production Support</option>
-              <option value="business_analyst">Business Analyst</option>
+              <option value="business_analyst">Business Analyst (any)</option>
+              <option value="business_analyst_tech">Business Analyst (technical)</option>
+              <option value="business_analyst_non_tech">Business Analyst (non-technical)</option>
             </select>
           </div>
           <div class="field">
             <label for="upClient">Client</label>
             <input type="text" id="upClient" placeholder="e.g. HSBC" />
+          </div>
+          <div class="field">
+            <label for="upDepartment">Department</label>
+            <input type="text" id="upDepartment" placeholder="e.g. Corporate Lending" />
           </div>
           <div class="field">
             <label for="upConsultant">Consultant</label>

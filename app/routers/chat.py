@@ -82,7 +82,10 @@ async def chat_stream(request: ChatRequest) -> StreamingResponse:
         # pulls sensible excerpts instead of matching on three vague words.
         recent_user = [m["content"] for m in history if m["role"] == "user"][-1:]
         query = " ".join(recent_user + [request.message])
-        hits = retrieval.search(query, role=request.role, client=request.client)
+        hits = retrieval.search(
+            query, role=request.role, client=request.client,
+            department=request.department,
+        )
 
     citations = [hit.as_citation(i) for i, hit in enumerate(hits, start=1)]
     context_block = format_context(hits) if request.use_knowledge_base else (

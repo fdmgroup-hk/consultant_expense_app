@@ -10,6 +10,7 @@ from typing import Any
 
 from .. import db
 from ..config import get_settings
+from ..prompts import ROLE_LABELS
 from ..retrieval import search as search_index
 from ..retrieval.embeddings import get_embedder
 from ..storage import get_storage, object_key
@@ -18,7 +19,10 @@ from .extract import UnsupportedFileType, extract
 
 logger = logging.getLogger(__name__)
 
-ROLES = ("developer", "production_support", "business_analyst", "general")
+#: Derived from ROLE_LABELS, never listed separately. As a hand-written copy this
+#: silently downgraded an upload tagged business_analyst_non_tech to "general" -
+#: the upload succeeded, so nothing surfaced the mismatch.
+ROLES = tuple(ROLE_LABELS)
 
 
 @dataclass
@@ -26,6 +30,7 @@ class DocumentMeta:
     title: str
     consultant: str | None = None
     client: str | None = None
+    department: str | None = None
     role: str = "general"
     placement_period: str | None = None
     tags: list[str] | None = None
@@ -108,9 +113,10 @@ def ingest_file(path: Path, meta: DocumentMeta, *, replace_existing: bool = Fals
         conn.execute(
             """
             INSERT INTO documents
-                (id, title, filename, source_type, consultant, client, role,
-                 placement_period, tags, notes, sha256, object_key, n_chunks, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'indexed')
+                (id, title, filename, source_type, consultant, client, department,
+                 role, placement_period, tags, notes, sha256, object_key, n_chunks,
+                 status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'indexed')
             """,
             (
                 document_id,
@@ -119,6 +125,7 @@ def ingest_file(path: Path, meta: DocumentMeta, *, replace_existing: bool = Fals
                 suffix.lstrip("."),
                 meta.consultant,
                 meta.client,
+                meta.department,
                 meta.role if meta.role in ROLES else "general",
                 meta.placement_period,
                 json.dumps(meta.tags or []),

@@ -467,6 +467,94 @@ def test_feedback_schema_separates_gaps_by_seniority():
         assert tool in advanced, tool
 
 
+def test_chat_prompt_forbids_naming_tools_absent_from_the_excerpts():
+    """A BA question produced a "Tools (from the decks)" table listing Jira,
+    Confluence, Visio and Figma, then volunteered React, Angular and Camunda -
+    none of which were in the PowerPoint it cited."""
+    from app.prompts import CHAT_SYSTEM
+
+    assert "ONLY SOURCE" in CHAT_SYSTEM
+    # the specific tools that were invented are named, so the rule is unmissable
+    for tool in ("Jira", "Confluence", "React", "Angular", "Camunda", "Pega", "Figma", "Visio"):
+        assert tool in CHAT_SYSTEM, tool
+    # and the shapes the fabrication took
+    assert "NEVER INVENT STRUCTURE" in CHAT_SYSTEM
+    assert "typical day" in CHAT_SYSTEM
+    assert "NEVER LABEL YOUR OWN KNOWLEDGE AS THE DECKS'" in CHAT_SYSTEM
+    assert "SAY SO AND STOP" in CHAT_SYSTEM
+    # the old two-sources framing is what invited it in the first place
+    assert "Your knowledge comes from two places" not in CHAT_SYSTEM
+
+
+def test_empty_knowledge_base_no_longer_invites_general_knowledge():
+    from app.prompts import format_context
+
+    empty = format_context([])
+    assert "does not cover this" in empty
+    assert "Answer from general knowledge" not in empty
+
+
+def test_business_analyst_splits_into_technical_and_non_technical():
+    from app.prompts import ROLE_BRIEFS, ROLE_LABELS, build_interview_system
+
+    for key in ("business_analyst_tech", "business_analyst_non_tech"):
+        assert key in ROLE_LABELS and key in ROLE_BRIEFS, key
+    # the pre-split value stays, so material already tagged with it is still reachable
+    assert "business_analyst" in ROLE_LABELS
+
+    tech = build_interview_system("business_analyst_tech", "intermediate")
+    assert "SQL" in tech and "API" in tech
+    non_tech = build_interview_system("business_analyst_non_tech", "intermediate")
+    assert "Do NOT ask this candidate to write SQL" in non_tech
+
+
+def test_department_narrows_the_interview_prompt_but_not_coding_questions():
+    from app.prompts import build_interview_system
+
+    system = build_interview_system(
+        "business_analyst_non_tech", "intermediate", "HSBC", None, "Corporate Lending"
+    )
+    assert "DEPARTMENT: Corporate Lending" in system
+    assert "HSBC" in system
+
+    # a coding session is generic, so neither client nor department may narrow it
+    coding = build_interview_system(
+        "developer", "foundation", "HSBC", "Java", "Corporate Lending"
+    )
+    assert "Corporate Lending" not in coding
+    assert "HSBC" not in coding
+
+
+def test_ingest_accepts_every_role_the_ui_offers():
+    """ROLES was a hand-written copy of ROLE_LABELS, so an upload tagged
+    business_analyst_non_tech was silently stored as "general" - and the upload
+    still returned 200, so nothing surfaced it."""
+    from app.ingest.pipeline import ROLES
+    from app.prompts import ROLE_LABELS
+
+    assert set(ROLES) == set(ROLE_LABELS)
+
+
+def test_department_filters_retrieval():
+    from app.retrieval.search import Hit
+
+    hit = Hit(chunk_id=1, document_id="d", text="t", locator="Slide 1", heading="",
+              document_title="Deck", client="HSBC", department="Corporate Lending",
+              role="business_analyst_tech", consultant=None, placement_period=None,
+              score=1.0)
+    assert hit.as_citation(1)["department"] == "Corporate Lending"
+
+
+def test_department_columns_are_added_to_an_existing_database():
+    """The live Supabase database predates the column, and CREATE TABLE IF NOT
+    EXISTS leaves an existing table untouched."""
+    from app.db import _ADDED_COLUMNS
+
+    added = {(table, column) for table, column, _ in _ADDED_COLUMNS}
+    assert ("documents", "department") in added
+    assert ("interview_sessions", "department_focus") in added
+
+
 def test_interview_prompt_states_junior_seniority_and_bands():
     from app.prompts import build_interview_system
 

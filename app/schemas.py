@@ -5,7 +5,10 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-Role = Literal["developer", "production_support", "business_analyst", "general"]
+Role = Literal[
+    "developer", "production_support", "business_analyst",
+    "business_analyst_tech", "business_analyst_non_tech", "general",
+]
 Level = Literal["foundation", "intermediate", "advanced"]
 
 
@@ -16,6 +19,7 @@ class DocumentOut(BaseModel):
     source_type: str
     consultant: str | None = None
     client: str | None = None
+    department: str | None = None
     role: str | None = None
     placement_period: str | None = None
     tags: list[str] = Field(default_factory=list)
@@ -41,6 +45,7 @@ class SearchHitOut(BaseModel):
     heading: str
     text: str
     client: str | None = None
+    department: str | None = None
     role: str | None = None
     consultant: str | None = None
     score: float
@@ -52,6 +57,7 @@ class ChatRequest(BaseModel):
     session_id: str | None = None
     role: Role | None = None
     client: str | None = None
+    department: str | None = None
     use_knowledge_base: bool = True
 
 
@@ -76,6 +82,7 @@ class InterviewStartRequest(BaseModel):
     topic: str | None = Field(default=None, max_length=200)
     # None means "any client" - questions stay generic across investment banks.
     client: str | None = Field(default=None, max_length=120)
+    department: str | None = Field(default=None, max_length=120)
 
 
 class InterviewQuestionOut(BaseModel):
@@ -123,6 +130,7 @@ class InterviewSummaryOut(BaseModel):
     level: str
     topic: str | None = None
     client: str | None = None
+    department: str | None = None
     answered: int
     average_score: float | None = None
     turns: list[dict[str, Any]] = Field(default_factory=list)
@@ -140,6 +148,7 @@ class StatusOut(BaseModel):
     embedding_dim: int
     roles: dict[str, int] = Field(default_factory=dict)
     clients: list[str] = Field(default_factory=list)
+    departments: list[str] = Field(default_factory=list)
     admin_token_is_default: bool = False
     database: str = "sqlite"
     storage_backend: str = "local"

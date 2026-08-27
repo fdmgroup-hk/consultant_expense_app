@@ -56,6 +56,7 @@ class Hit:
     heading: str
     document_title: str
     client: str | None
+    department: str | None
     role: str | None
     consultant: str | None
     placement_period: str | None
@@ -70,6 +71,7 @@ class Hit:
             "locator": self.locator,
             "heading": self.heading,
             "client": self.client,
+            "department": self.department,
             "role": self.role,
             "consultant": self.consultant,
         }
@@ -100,7 +102,8 @@ class _Index:
             rows = conn.execute(
                 """
                 SELECT c.id AS chunk_id, c.document_id, c.locator, c.heading, c.text,
-                       d.title AS document_title, d.client, d.role, d.consultant,
+                       d.title AS document_title, d.client, d.department, d.role,
+                       d.consultant,
                        d.placement_period
                 FROM chunks c
                 JOIN documents d ON d.id = c.document_id
@@ -212,6 +215,7 @@ def search(
     top_k: int | None = None,
     role: str | None = None,
     client: str | None = None,
+    department: str | None = None,
     document_ids: list[str] | None = None,
 ) -> list[Hit]:
     settings = get_settings()
@@ -221,11 +225,13 @@ def search(
         return []
 
     allowed = np.ones(index.n_chunks, dtype=bool)
-    if role or client or document_ids:
+    if role or client or department or document_ids:
         for position, row in enumerate(index.rows):
             if role and (row["role"] or "").lower() != role.lower():
                 allowed[position] = False
             elif client and (row["client"] or "").lower() != client.lower():
+                allowed[position] = False
+            elif department and (row["department"] or "").lower() != department.lower():
                 allowed[position] = False
             elif document_ids and row["document_id"] not in document_ids:
                 allowed[position] = False
@@ -258,6 +264,7 @@ def search(
                 heading=row["heading"] or "",
                 document_title=row["document_title"],
                 client=row["client"],
+                department=row["department"],
                 role=row["role"],
                 consultant=row["consultant"],
                 placement_period=row["placement_period"],

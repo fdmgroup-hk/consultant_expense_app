@@ -146,6 +146,10 @@ def status() -> StatusOut:
             "SELECT DISTINCT client FROM documents WHERE client IS NOT NULL AND client != '' "
             "ORDER BY client"
         ).fetchall()
+        department_rows = conn.execute(
+            "SELECT DISTINCT department FROM documents WHERE department IS NOT NULL "
+            "AND department != '' ORDER BY department"
+        ).fetchall()
 
     stats = retrieval.index_stats()
     storage = get_storage()
@@ -161,6 +165,7 @@ def status() -> StatusOut:
         embedding_dim=stats["embedding_dim"],
         roles={ROLE_LABELS.get(r["role"], r["role"] or "general"): r["n"] for r in role_rows},
         clients=[r["client"] for r in client_rows],
+        departments=[r["department"] for r in department_rows],
         admin_token_is_default=admin_token_is_default(),
         database=db.dialect(),
         storage_backend=storage.name,

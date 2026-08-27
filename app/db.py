@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS documents (
     source_type       TEXT NOT NULL,
     consultant        TEXT,
     client            TEXT,
+    department        TEXT,
     role              TEXT,
     placement_period  TEXT,
     tags              TEXT NOT NULL DEFAULT '[]',
@@ -87,8 +88,9 @@ CREATE TABLE IF NOT EXISTS interview_sessions (
     id            TEXT PRIMARY KEY,
     role_focus    TEXT NOT NULL,
     level         TEXT NOT NULL,
-    topic         TEXT,
-    client_focus  TEXT,
+    topic             TEXT,
+    client_focus      TEXT,
+    department_focus  TEXT,
     status        TEXT NOT NULL DEFAULT 'active',
     created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -122,6 +124,7 @@ CREATE TABLE IF NOT EXISTS documents (
     source_type       TEXT NOT NULL,
     consultant        TEXT,
     client            TEXT,
+    department        TEXT,
     role              TEXT,
     placement_period  TEXT,
     tags              TEXT NOT NULL DEFAULT '[]',
@@ -174,8 +177,9 @@ CREATE TABLE IF NOT EXISTS interview_sessions (
     id            TEXT PRIMARY KEY,
     role_focus    TEXT NOT NULL,
     level         TEXT NOT NULL,
-    topic         TEXT,
-    client_focus  TEXT,
+    topic             TEXT,
+    client_focus      TEXT,
+    department_focus  TEXT,
     status        TEXT NOT NULL DEFAULT 'active',
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -336,6 +340,8 @@ def _get_pool():
 _ADDED_COLUMNS: tuple[tuple[str, str, str], ...] = (
     ("documents", "object_key", "TEXT"),
     ("interview_sessions", "client_focus", "TEXT"),
+    ("documents", "department", "TEXT"),
+    ("interview_sessions", "department_focus", "TEXT"),
 )
 
 
