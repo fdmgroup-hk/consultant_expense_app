@@ -41,6 +41,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Bulk-index consultant material.")
     parser.add_argument("folder", type=Path, help="Folder to walk (recursively).")
     parser.add_argument("--client", default="", help="Client name applied to every file.")
+    parser.add_argument("--department", default="",
+                        help="Department or desk within the client, e.g. 'Corporate Lending'.")
     parser.add_argument("--role", default="general", choices=list(ROLES))
     parser.add_argument("--consultant", default="", help="Consultant name or initials.")
     parser.add_argument("--period", default="", help="Placement period, e.g. '2025 H1'.")
@@ -72,6 +74,7 @@ def main() -> int:
     for path in files:
         fields = {
             "client": args.client,
+            "department": args.department,
             "role": args.role,
             "placement_period": args.period,
         }
@@ -82,6 +85,7 @@ def main() -> int:
             title=path.stem.replace("_", " ").replace("-", " "),
             consultant=args.consultant or None,
             client=fields["client"] or None,
+            department=fields["department"] or None,
             role=fields["role"] or "general",
             placement_period=fields["placement_period"] or None,
             tags=[t.strip() for t in args.tags.split(",") if t.strip()],
@@ -89,7 +93,8 @@ def main() -> int:
 
         label = path.relative_to(root)
         if args.dry_run:
-            print(f"  would index  {label}  (client={meta.client}, role={meta.role})")
+            print(f"  would index  {label}  (client={meta.client}, "
+                  f"department={meta.department}, role={meta.role})")
             continue
 
         try:

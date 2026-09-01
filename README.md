@@ -4,8 +4,8 @@ An AI interview-preparation coach for FDM consultants heading into technology pl
 
 It turns handover material written by returning consultants — PowerPoint decks, PDFs, Word write-ups — into a searchable knowledge base, then uses it for two things:
 
-- **Ask** — grounded Q&A about financial concepts (trade lifecycle, order flow, settlement), what each technology role actually involves, and what previous consultants experienced on placement. Every answer cites the deck and slide it came from.
-- **Practise** — role-specific mock interviews. One question at a time, an honest score out of 10, a model answer, and a follow-up that drills into whatever you left out.
+- **Ask** — grounded Q&A about financial concepts (trade lifecycle, order flow, settlement), what each technology role actually involves, and what previous consultants experienced on placement. Every answer cites the deck and slide it came from, and the model answers **only** from the uploaded material — see [Why answers stop where the material stops](#why-answers-stop-where-the-material-stops).
+- **Practise** — role-specific mock interviews. One question at a time, an honest score out of 10, a model answer, and a follow-up that drills into whatever you left out. Ask for a coding topic (Java, Python, SQL, algorithms) and it alternates language-concept questions with LeetCode-style exercises, reviewed for correctness, complexity and edge cases.
 
 The app ships with a starter knowledge pack, so it is useful before anyone uploads anything.
 
@@ -18,7 +18,7 @@ The app ships with a starter knowledge pack, so it is useful before anyone uploa
 ```powershell
 cd C:\Users\Asus\FDM_APP
 .\run.ps1 -Setup          # creates .venv, installs dependencies, creates .env
-# add your free GOOGLE_API_KEY to .env, then:
+# add your free CF_ACCOUNT_ID and CF_API_TOKEN to .env, then:
 .\run.ps1
 ```
 
@@ -26,7 +26,7 @@ cd C:\Users\Asus\FDM_APP
 
 ```bash
 ./run.sh                  # first run sets everything up and creates .env
-# add your free GOOGLE_API_KEY to .env, then:
+# add your free CF_ACCOUNT_ID and CF_API_TOKEN to .env, then:
 ./run.sh
 ```
 
@@ -42,9 +42,11 @@ cp .env.example .env                                        # then edit it
 
 Open **http://127.0.0.1:8000**. Interactive API docs are at `/docs`.
 
-You need one thing to get started: a **free** Groq key from <https://console.groq.com/keys> (no card required). Put it in `.env` as `GROQ_API_KEY`. Everything else has a working default.
+You need one thing to get started: free **Cloudflare Workers AI** credentials. Create an API token with the Workers AI permission at <https://dash.cloudflare.com/profile/api-tokens>, and take the account id from your dashboard URL. Put them in `.env` as `CF_API_TOKEN` and `CF_ACCOUNT_ID`. Everything else has a working default.
 
-Prefer Claude? Set `LLM_PROVIDER=anthropic` and `ANTHROPIC_API_KEY` instead — both providers are supported and the switch touches only [app/llm.py](app/llm.py).
+The free allowance is 10,000 Neurons a day, roughly 75 grounded answers. `LLM_PROVIDER=groq` and `LLM_PROVIDER=gemini` are also free and need only a single key each; both are drop-in alternatives.
+
+Prefer Claude? Set `LLM_PROVIDER=anthropic` and `ANTHROPIC_API_KEY` instead. All four providers sit behind one interface, so the switch touches only [app/llm.py](app/llm.py).
 
 ---
 
@@ -58,7 +60,7 @@ The app runs in two configurations from the same codebase, chosen by whether `DA
 | Original decks | `data/uploads/` | Private S3 bucket (Supabase Storage) |
 | Setup needed | none | see **[DEPLOY.md](DEPLOY.md)** |
 
-**Local** needs no accounts and nothing leaves the machine except the questions and retrieved excerpts sent to the Claude API. Back it up by copying one file.
+**Local** needs no accounts and nothing leaves the machine except the questions and retrieved excerpts sent to the model provider. Back it up by copying one file.
 
 **Hosted** is Supabase + Render, both free tiers, region Singapore — the closest either offers to Hong Kong (~30–40ms). Neither has a Hong Kong region, and no free managed Postgres does; if residency is ever mandated, [DEPLOY.md](DEPLOY.md) covers the alternatives. Full walkthrough, free-tier limits and troubleshooting are in **[DEPLOY.md](DEPLOY.md)**.
 
@@ -113,12 +115,26 @@ Upload (.pptx/.pdf/.docx/.md/.txt)
   Retrieve ───────────── BM25 keyword  +  vector similarity
         │                fused with Reciprocal Rank Fusion
         ▼
-  Claude Opus 5 ──────── streamed answer with inline [1][2] citations
+  LLM (see below) ────── streamed answer with inline [1][2] citations
 ```
 
 **Why hybrid retrieval.** BM25 alone nails the jargon (`T+2`, `FIX 35=D`, `PnL break`) but misses paraphrases. Vectors alone catch "what happens after a trade is agreed" but drift on exact identifiers. Fusing the two rankings handles both, and it means the app still retrieves sensibly when no embedding model is installed.
 
-**Citations are structural, not decorative.** Retrieved chunks are numbered in the prompt and carry their source deck, slide number, client and role. The system prompt requires the model to separate what came from the decks from its own background knowledge, so a consultant can tell which parts are lived experience from a previous placement.
+**Citations are structural, not decorative.** Retrieved chunks are numbered in the prompt and carry their source deck, slide number, client, department and role. Every factual claim about a placement must carry the citation of the excerpt it came from.
+
+### Why answers stop where the material stops
+
+An early version told the model its knowledge came from two places — the decks *and* its own background — and asked it to flag the difference. It did not hold. Asked what tech stack a business analyst placement used, it produced a tidy table headed *"Tools (from the decks)"* listing Jira, Confluence, Visio and Figma, then went on to suggest React, Angular, Spring Boot, Camunda and Pega. The deck named none of them. Everything in it was plausible, which is exactly the problem: a consultant cannot tell invented detail from lived experience, and would repeat it in an interview.
+
+Ask now treats the excerpts as the only source, under three rules:
+
+- **No technology, product, vendor or tool may be named unless it appears in an excerpt.** Not Jira, not React, however certain the model is that a bank of this kind uses one.
+- **No invented structure.** No "a typical day" broken into morning and afternoon, no schedule of meetings, unless an excerpt describes one. A plausible timetable assembled from nothing is a fabrication even when every activity in it sounds reasonable.
+- **No labelling its own knowledge as the decks'.** A heading or table column that says "from the decks" may contain only cited material.
+
+When the excerpts do not cover the question, the answer says so and stops. General background is allowed at most two sentences, at the very end, under a line beginning `Beyond the material:` — never woven into the body, never in a table, never cited.
+
+Be clear about what this does and does not guarantee. The rules live in the system prompt, and tests pin them there so they cannot be quietly dropped or reworded away — but they constrain the model rather than the output. A model can still disobey a prompt. If you see a fabricated tool name, that is a bug worth reporting, not the design working as intended.
 
 ### Layout
 
@@ -159,12 +175,14 @@ DEPLOY.md              step-by-step Supabase + Render setup
 
 ## Adding consultant material
 
-**Through the UI:** the *Knowledge base* tab. Pick a file, tag it with the client, role and placement period, enter the admin token, upload. Tagging matters — it is what lets someone filter to "Production Support at HSBC" and what makes mock-interview questions role-appropriate.
+**Through the UI:** the *Knowledge base* tab. Pick a file, tag it with the client, department, role and placement period, enter the admin token, upload. Tagging matters — it is what lets someone filter to "Production Support at HSBC" or "Corporate Lending" specifically, and what makes mock-interview questions role-appropriate.
+
+**Roles.** `developer`, `production_support`, `business_analyst_tech`, `business_analyst_non_tech`, `general`. The two business-analyst values matter: a technical BA gets asked to read SQL and API payloads, a non-technical one is asked about requirements, stakeholders and process instead. Plain `business_analyst` still exists for material tagged before the split and remains searchable.
 
 **In bulk:**
 
 ```bash
-.venv/Scripts/python -m scripts.bulk_ingest "C:\handovers\HSBC 2025" --client HSBC --role developer
+.venv/Scripts/python -m scripts.bulk_ingest "C:\handovers\HSBC 2025" --client HSBC --department "Corporate Lending" --role developer
 
 # or let the folder structure supply the metadata:
 #   <root>/HSBC/production_support/2025H1/deck.pptx
@@ -187,8 +205,10 @@ Everything lives in `.env` (see `.env.example`).
 
 | Setting | Default | Notes |
 |---|---|---|
-| `LLM_PROVIDER` | `groq` | `groq` (free), `gemini` (free, tight quota) or `anthropic` (paid) |
-| `GROQ_API_KEY` | — | Free key from console.groq.com; required for chat and practice |
+| `LLM_PROVIDER` | `cloudflare` | `cloudflare` (free), `groq` (free), `gemini` (free, tight quota) or `anthropic` (paid) |
+| `CF_ACCOUNT_ID` / `CF_API_TOKEN` | — | Required for the default provider; free 10,000 Neurons/day |
+| `CF_MODEL` | `@cf/openai/gpt-oss-120b` | Open-weight reasoning model on Workers AI |
+| `GROQ_API_KEY` | — | Only when `LLM_PROVIDER=groq`; free key from console.groq.com |
 | `GROQ_MODEL` | `openai/gpt-oss-120b` | Open-weight reasoning model on Groq |
 | `GOOGLE_API_KEY` | — | Only when `LLM_PROVIDER=gemini` |
 | `GEMINI_MODEL` | `gemini-flash-lite-latest` | Covered by the free tier |
@@ -232,7 +252,7 @@ Then set `EMBEDDING_PROVIDER` and **re-index** — the *Re-index* button on the 
 
 ## What it costs
 
-**On the default setup: nothing.** Gemini's free tier covers the model calls, Supabase's free tier covers the database and file storage, and Render's free tier covers hosting. The embedding step runs locally and needs no key at all.
+**On the default setup: nothing.** Cloudflare Workers AI's free allowance covers the model calls, Supabase's free tier covers the database and file storage, and Render's free tier covers hosting. The embedding step runs locally and needs no key at all.
 
 The free tier has rate limits rather than charges — a burst of simultaneous users can hit "rate limit, wait a minute" rather than a bill. Verify the current limits when you create the key.
 
@@ -265,7 +285,7 @@ Full interactive docs at `/docs` when the app is running.
 | Method | Path | Purpose |
 |---|---|---|
 | `GET` | `/api/status` | Counts, embedding provider, whether the key is set |
-| `GET` | `/api/documents` | List indexed material (filter by `role`, `client`) |
+| `GET` | `/api/documents` | List indexed material (filter by `role`, `client`, `department`) |
 | `POST` | `/api/documents` | Upload and index (needs `X-Admin-Token`) |
 | `DELETE` | `/api/documents/{id}` | Remove a document and its chunks |
 | `GET` | `/api/documents/{id}/chunks` | Inspect exactly what was indexed |
